@@ -64,41 +64,44 @@ export type Database = {
       }
       transactions: {
         Row: {
-          amount_cents: number
-          category_id: string | null
-          created_at: string
-          date: string
-          description: string
-          id: string
-          notes: string | null
-          payment_method: string | null
-          type: string
-          user_id: string
-        }
+      amount_cents: number
+      category_id: string | null
+      created_at: string
+      date: string
+      description: string
+      id: string
+      is_paid: boolean
+      notes: string | null
+      payment_method: string | null
+      type: string
+      user_id: string
+    }
         Insert: {
-          amount_cents: number
-          category_id?: string | null
-          created_at?: string
-          date?: string
-          description: string
-          id?: string
-          notes?: string | null
-          payment_method?: string | null
-          type: string
-          user_id: string
-        }
+      amount_cents: number
+      category_id?: string | null
+      created_at?: string
+      date?: string
+      description: string
+      id?: string
+      is_paid?: boolean
+      notes?: string | null
+      payment_method?: string | null
+      type: string
+      user_id: string
+    }
         Update: {
-          amount_cents?: number
-          category_id?: string | null
-          created_at?: string
-          date?: string
-          description?: string
-          id?: string
-          notes?: string | null
-          payment_method?: string | null
-          type?: string
-          user_id?: string
-        }
+      amount_cents?: number
+      category_id?: string | null
+      created_at?: string
+      date?: string
+      description?: string
+      id?: string
+      is_paid?: boolean
+      notes?: string | null
+      payment_method?: string | null
+      type?: string
+      user_id?: string
+    }
         Relationships: [
           {
             foreignKeyName: "transactions_category_id_fkey"

@@ -49,12 +49,14 @@ Este documento resume a arquitetura atual do FinanceFlow e serve como referênci
 ### Dashboard (`src/pages/Dashboard.tsx`)
 - Usa `useTransactions` com filtros de período (mês atual, mês anterior, todos).
 - Calcula totais de receitas/despesas/saldo em memória (centavos → BRL via `formatCentsToBRL`).
-- Lista últimas cinco transações com atalho para edição.
+- Exibe card dedicado a “Transações Pendentes” com contagem, ícone `Clock` e CTA que leva para a listagem já filtrada.
+- Lista últimas cinco transações com badge de status pago/pendente e atalho para edição.
 - Botões principais: selecionar período, criar nova transação, navegar para lista completa.
 
 ### Transações (`src/pages/Transactions.tsx`)
-- Filtros: busca textual, tipo (`income`/`expense`), categoria.
-- Tabela renderiza transações com badges de categoria/tipo, valores formatados, ações de editar/excluir.
+- Filtros: busca textual, tipo (`income`/`expense`), categoria e status (`paid`/`pending` via dropdown).
+- Tabela renderiza badges de categoria, tipo e novo status pago/pendente, valores formatados, ações de editar/excluir.
+- Botão de ação rápida (ícones `Clock`/`CheckCircle2`) alterna o status diretamente na listagem usando `useUpdateTransaction`.
 - Criação e edição redirecionam para `/transacoes/nova` e `/transacoes/:id/editar`.
 - Exclusão usa `AlertDialog` de confirmação e `useDeleteTransaction` (invalida cache ao concluir).
 
@@ -62,6 +64,7 @@ Este documento resume a arquitetura atual do FinanceFlow e serve como referênci
 - React Hook Form + Zod (`transactionSchema`).
 - Formata valores em BRL, converte para centavos com `parseBRLToCents`.
 - Seleciona categoria filtrando por tipo (`income`/`expense`).
+- Inclui `Switch` "Transação paga?" integrado ao formulário para definir `is_paid` no momento da criação/edição.
 - `useParams` detecta modo edição e preenche defaults (incluindo notas e método de pagamento).
 - `useCreateTransaction` ou `useUpdateTransaction` executam mutações e fazem invalidate da query ao sucesso.
 
@@ -75,7 +78,7 @@ Este documento resume a arquitetura atual do FinanceFlow e serve como referênci
 
 ## Hooks de Dados
 
-- **`useTransactions(filters?)`**: consulta `transactions` com join em `categories(name, color)`; aplica filtros opcionais (`startDate`, `endDate`, `type`, `categoryId`, `search`). React Query usa `queryKey: ['transactions', filters]`.
+- **`useTransactions(filters?)`**: consulta `transactions` com join em `categories(name, color)`; aplica filtros opcionais (`startDate`, `endDate`, `type`, `categoryId`, `status`, `search`). React Query usa `queryKey: ['transactions', filters]` e retorna `is_paid` como boolean.
 - **Mutations**:
   - `useCreateTransaction`: injeta `user_id` autenticado, insere e mostra toast.
   - `useUpdateTransaction`: update por `id`.
@@ -99,6 +102,8 @@ Este documento resume a arquitetura atual do FinanceFlow e serve como referênci
      - Função `create_default_categories()` para criar seeds manuais.
   2. `20251014170000_update_handle_new_user.sql`
      - Atualiza trigger `handle_new_user` para criar perfis **e** categorias padrão automaticamente no registro.
+  3. `20250217120000_add_is_paid_to_transactions.sql`
+     - Adiciona coluna `is_paid boolean NOT NULL DEFAULT false` e índice `idx_transactions_is_paid` para suportar status pago/pendente.
 - **Policies ativas** asseguram que cada usuário veja/modifique somente seus próprios dados.
 - **Variáveis de ambiente necessárias**:
   - `VITE_SUPABASE_URL`
@@ -139,6 +144,7 @@ VITE_SUPABASE_PUBLISHABLE_KEY=<chave-publica>
 - **Toasts**: sucesso/erro padronizados com `sonner`; mensagens já localizadas em pt-BR.
 - **Formulários**: padrão `React Hook Form` + `zodResolver`; reutilize padrões de validação existentes.
 - **Componentes shadcn**: seguir pattern atual (Form, Dialog, AlertDialog, Select, etc.) para consistência visual.
+- **Status de pagamento**: mantenha `is_paid` como booleano (`false` por padrão); use as mutações existentes para alternar o status e reflita mudanças na UI (badge, filtros, card de pendências).
 - **Proteção de rotas**: sempre envolver páginas privadas com `<ProtectedRoute>` e assumir que `useAuth` pode estar em `loading`.
 
 ---
@@ -160,4 +166,3 @@ VITE_SUPABASE_PUBLISHABLE_KEY=<chave-publica>
 ---
 
 Este guia deve ser mantido atualizado sempre que novas features, entidades ou fluxos forem adicionados ao FinanceFlow.
-

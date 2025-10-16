@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -36,6 +37,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { CalendarIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Switch } from '@/components/ui/switch';
 
 const transactionSchema = z.object({
   type: z.enum(['income', 'expense'], {
@@ -46,9 +48,10 @@ const transactionSchema = z.object({
     required_error: 'Data é obrigatória',
   }),
   description: z.string().min(3, 'Descrição deve ter no mínimo 3 caracteres'),
-  category_id: z.string().optional(),
+  category_id: z.string(),
   payment_method: z.string().optional(),
   notes: z.string().optional(),
+  is_paid: z.boolean().default(false),
 });
 
 type TransactionFormData = z.infer<typeof transactionSchema>;
@@ -63,8 +66,6 @@ export default function TransactionForm() {
   const createMutation = useCreateTransaction();
   const updateMutation = useUpdateTransaction();
 
-  const [selectedType, setSelectedType] = useState<'income' | 'expense'>('expense');
-
   const form = useForm<TransactionFormData>({
     resolver: zodResolver(transactionSchema),
     defaultValues: {
@@ -72,11 +73,15 @@ export default function TransactionForm() {
       amount: '',
       date: new Date(),
       description: '',
-      category_id: '',
+      category_id: 'none',
       payment_method: '',
       notes: '',
+      is_paid: false,
     },
   });
+
+  const selectedType = form.watch('type');
+  const currentCategoryId = form.watch('category_id');
 
   useEffect(() => {
     if (isEditing && transactions) {
@@ -87,11 +92,11 @@ export default function TransactionForm() {
           amount: (transaction.amount_cents / 100).toFixed(2).replace('.', ','),
           date: new Date(transaction.date),
           description: transaction.description,
-          category_id: transaction.category_id || '',
+          category_id: transaction.category_id || 'none',
           payment_method: transaction.payment_method || '',
           notes: transaction.notes || '',
+          is_paid: transaction.is_paid,
         });
-        setSelectedType(transaction.type);
       }
     }
   }, [isEditing, id, transactions, form]);
@@ -100,15 +105,30 @@ export default function TransactionForm() {
     (cat) => cat.type === selectedType
   );
 
+  useEffect(() => {
+    if (!categories) return;
+    if (!selectedType) return;
+    if (!currentCategoryId || currentCategoryId === 'none') return;
+
+    const categoryExists = categories.some(
+      (cat) => cat.id === currentCategoryId && cat.type === selectedType
+    );
+
+    if (!categoryExists) {
+      form.setValue('category_id', 'none');
+    }
+  }, [categories, selectedType, currentCategoryId, form]);
+
   async function onSubmit(data: TransactionFormData) {
     const transactionData = {
       type: data.type,
       amount_cents: parseBRLToCents(data.amount),
       date: format(data.date, 'yyyy-MM-dd'),
       description: data.description,
-      category_id: data.category_id || null,
+      category_id: data.category_id === 'none' ? null : data.category_id,
       payment_method: data.payment_method || null,
       notes: data.notes || null,
+      is_paid: data.is_paid ?? false,
     };
 
     if (isEditing) {
@@ -150,8 +170,6 @@ export default function TransactionForm() {
                       <Select
                         onValueChange={(value) => {
                           field.onChange(value);
-                          setSelectedType(value as 'income' | 'expense');
-                          form.setValue('category_id', '');
                         }}
                         value={field.value}
                       >
@@ -266,6 +284,7 @@ export default function TransactionForm() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
+                          <SelectItem value="none">Sem categoria</SelectItem>
                           {filteredCategories?.map((category) => (
                             <SelectItem key={category.id} value={category.id}>
                               {category.name}
@@ -274,6 +293,28 @@ export default function TransactionForm() {
                         </SelectContent>
                       </Select>
                       <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="is_paid"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                      <div className="space-y-1">
+                        <FormLabel>Status de Pagamento</FormLabel>
+                        <FormDescription>
+                          Marque como pago quando o lançamento já tiver sido quitado.
+                        </FormDescription>
+                      </div>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          aria-label="Marcar transação como paga"
+                        />
+                      </FormControl>
                     </FormItem>
                   )}
                 />
