@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
+import type { AccountType } from '@/hooks/useAccounts';
 
 export interface TransactionCategoryReference {
   name: string;
@@ -15,12 +16,20 @@ export interface Transaction {
   amount_cents: number;
   date: string;
   description: string;
+  account_id: string | null;
   category_id: string | null;
   payment_method: string | null;
   notes: string | null;
   is_paid: boolean;
   created_at: string;
   categories?: TransactionCategoryReference | null;
+  account?: {
+    id: string;
+    name: string;
+    type: AccountType;
+    limit_cents: number | null;
+    balance_cents: number | null;
+  } | null;
 }
 
 export interface TransactionFilters {
@@ -28,6 +37,7 @@ export interface TransactionFilters {
   endDate?: string;
   type?: 'income' | 'expense';
   categoryId?: string;
+  accountId?: string;
   search?: string;
   status?: 'paid' | 'pending';
 }
@@ -37,6 +47,7 @@ type TransactionInsertInput = {
   amount_cents: number;
   date: string;
   description: string;
+  account_id?: string | null;
   category_id?: string | null;
   payment_method?: string | null;
   notes?: string | null;
@@ -51,7 +62,7 @@ export function useTransactions(filters?: TransactionFilters) {
     queryFn: async () => {
       let query = supabase
         .from('transactions')
-        .select('*, categories(name, color)')
+        .select('*, categories(name, color), account:account_id(id, name, type, limit_cents, balance_cents)')
         .order('date', { ascending: false });
 
       if (filters?.startDate) {
@@ -65,6 +76,9 @@ export function useTransactions(filters?: TransactionFilters) {
       }
       if (filters?.categoryId) {
         query = query.eq('category_id', filters.categoryId);
+      }
+      if (filters?.accountId) {
+        query = query.eq('account_id', filters.accountId);
       }
       if (filters?.status) {
         const isPaid = filters.status === 'paid';
@@ -94,6 +108,7 @@ export function useCreateTransaction() {
 
       const payload = {
         ...transaction,
+        account_id: transaction.account_id ?? null,
         category_id: transaction.category_id ?? null,
         payment_method: transaction.payment_method ?? null,
         notes: transaction.notes ?? null,
@@ -128,6 +143,9 @@ export function useUpdateTransaction() {
 
       if (payload.category_id === undefined) {
         delete payload.category_id;
+      }
+      if (payload.account_id === undefined) {
+        delete payload.account_id;
       }
       if (payload.payment_method === undefined) {
         delete payload.payment_method;

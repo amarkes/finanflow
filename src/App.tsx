@@ -12,6 +12,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import Transactions from "./pages/Transactions";
 import TransactionForm from "./pages/TransactionForm";
 import Categories from "./pages/Categories";
+import Accounts from "./pages/Accounts";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
             <Route path="/transacoes/nova" element={<ProtectedRoute><TransactionForm /></ProtectedRoute>} />
             <Route path="/transacoes/:id/editar" element={<ProtectedRoute><TransactionForm /></ProtectedRoute>} />
             <Route path="/categorias" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
+            <Route path="/contas" element={<ProtectedRoute><Accounts /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

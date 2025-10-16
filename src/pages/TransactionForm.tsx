@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -6,7 +6,8 @@ import * as z from 'zod';
 import { Layout } from '@/components/Layout';
 import { useCategories } from '@/hooks/useCategories';
 import { useCreateTransaction, useUpdateTransaction, useTransactions } from '@/hooks/useTransactions';
-import { parseBRLToCents } from '@/lib/currency';
+import { useAccounts } from '@/hooks/useAccounts';
+import { parseBRLToCents, formatCentsToBRL } from '@/lib/currency';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -38,6 +39,9 @@ import { ptBR } from 'date-fns/locale';
 import { CalendarIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
+import { PaymentMethodChips, PAYMENT_METHOD_OPTIONS, PAYMENT_METHOD_ACCOUNT_TYPES } from '@/components/payment/PaymentMethodChips';
+import { toast } from 'sonner';
+import { getAccountTypeLabel } from '@/lib/account';
 
 const transactionSchema = z.object({
   type: z.enum(['income', 'expense'], {
@@ -50,8 +54,19 @@ const transactionSchema = z.object({
   description: z.string().min(3, 'Descrição deve ter no mínimo 3 caracteres'),
   category_id: z.string(),
   payment_method: z.string().optional(),
+  account_id: z.string().optional(),
   notes: z.string().optional(),
   is_paid: z.boolean().default(false),
+}).superRefine((data, ctx) => {
+  if (data.payment_method?.toLowerCase() === 'cartão de crédito') {
+    if (!data.account_id || data.account_id === 'none') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Selecione uma conta de cartão de crédito',
+        path: ['account_id'],
+      });
+    }
+  }
 });
 
 type TransactionFormData = z.infer<typeof transactionSchema>;
@@ -62,6 +77,7 @@ export default function TransactionForm() {
   const isEditing = !!id;
 
   const { data: categories } = useCategories();
+  const { data: accounts } = useAccounts({ isActive: true });
   const { data: transactions } = useTransactions();
   const createMutation = useCreateTransaction();
   const updateMutation = useUpdateTransaction();
@@ -75,6 +91,7 @@ export default function TransactionForm() {
       description: '',
       category_id: 'none',
       payment_method: '',
+      account_id: 'none',
       notes: '',
       is_paid: false,
     },
@@ -82,6 +99,8 @@ export default function TransactionForm() {
 
   const selectedType = form.watch('type');
   const currentCategoryId = form.watch('category_id');
+  const paymentMethod = form.watch('payment_method');
+  const currentAccountId = form.watch('account_id');
 
   useEffect(() => {
     if (isEditing && transactions) {
@@ -94,6 +113,7 @@ export default function TransactionForm() {
           description: transaction.description,
           category_id: transaction.category_id || 'none',
           payment_method: transaction.payment_method || '',
+          account_id: transaction.account_id || 'none',
           notes: transaction.notes || '',
           is_paid: transaction.is_paid,
         });
@@ -104,6 +124,30 @@ export default function TransactionForm() {
   const filteredCategories = categories?.filter(
     (cat) => cat.type === selectedType
   );
+
+  const compatibleAccountTypes = useMemo(() => {
+    if (!paymentMethod) return undefined;
+    return PAYMENT_METHOD_ACCOUNT_TYPES[paymentMethod] || undefined;
+  }, [paymentMethod]);
+
+  const filteredAccounts = useMemo(() => {
+    if (!accounts) return [];
+    const activeAccounts = accounts.filter((account) => account.is_active);
+
+    if (!compatibleAccountTypes || compatibleAccountTypes.length === 0) {
+      return activeAccounts;
+    }
+
+    return activeAccounts.filter((account) =>
+      compatibleAccountTypes.includes(account.type)
+    );
+  }, [accounts, compatibleAccountTypes]);
+
+  const selectedAccount = useMemo(() => {
+    if (!accounts) return undefined;
+    if (!currentAccountId || currentAccountId === 'none') return undefined;
+    return accounts.find((account) => account.id === currentAccountId);
+  }, [accounts, currentAccountId]);
 
   useEffect(() => {
     if (!categories) return;
@@ -119,14 +163,85 @@ export default function TransactionForm() {
     }
   }, [categories, selectedType, currentCategoryId, form]);
 
+  useEffect(() => {
+    if (!currentAccountId) return;
+    if (currentAccountId === 'none') return;
+
+    const stillAvailable = filteredAccounts.some((account) => account.id === currentAccountId);
+
+    if (!stillAvailable) {
+      form.setValue('account_id', 'none');
+    }
+  }, [filteredAccounts, currentAccountId, form]);
+
+  const outstandingAmount = useMemo(() => {
+    if (!selectedAccount) return 0;
+    if (!transactions) return 0;
+
+    return transactions
+      .filter(
+        (transaction) =>
+          transaction.account_id === selectedAccount.id &&
+          transaction.type === 'expense' &&
+          !transaction.is_paid &&
+          (!isEditing || transaction.id !== id)
+      )
+      .reduce((total, transaction) => total + transaction.amount_cents, 0);
+  }, [selectedAccount, transactions, isEditing, id]);
+
+  const availableLimit = useMemo(() => {
+    if (!selectedAccount) return null;
+    if (selectedAccount.type !== 'credit_card') return null;
+    if (selectedAccount.limit_cents == null) return null;
+
+    return selectedAccount.limit_cents - outstandingAmount;
+  }, [selectedAccount, outstandingAmount]);
+
+  const balanceHint = useMemo(() => {
+    if (!selectedAccount) return null;
+
+    if (selectedAccount.type === 'credit_card') {
+      if (availableLimit == null) return 'Limite não informado';
+      return `Limite disponível: ${formatCentsToBRL(Math.max(availableLimit, 0))}`;
+    }
+
+    if (selectedAccount.balance_cents != null) {
+      return `Saldo estimado: ${formatCentsToBRL(selectedAccount.balance_cents)}`;
+    }
+
+    return 'Saldo não informado';
+  }, [selectedAccount, availableLimit]);
+
   async function onSubmit(data: TransactionFormData) {
+    const sanitizedMethod = data.payment_method?.trim() ?? '';
+    const selectedAccountId = data.account_id && data.account_id !== 'none' ? data.account_id : null;
+    const selectedAccountForSubmit = accounts?.find((account) => account.id === selectedAccountId);
+    const compatibleTypes = sanitizedMethod ? PAYMENT_METHOD_ACCOUNT_TYPES[sanitizedMethod] : undefined;
+
+    if (compatibleTypes && compatibleTypes.length > 0) {
+      if (!selectedAccountForSubmit && compatibleTypes.includes('credit_card')) {
+        toast.error('Selecione uma conta de cartão de crédito para este método.');
+        return;
+      }
+
+      if (
+        selectedAccountForSubmit &&
+        compatibleTypes.length > 0 &&
+        !compatibleTypes.includes(selectedAccountForSubmit.type)
+      ) {
+        toast.error('A conta selecionada não é compatível com o método de pagamento escolhido.');
+        return;
+      }
+    }
+
     const transactionData = {
       type: data.type,
       amount_cents: parseBRLToCents(data.amount),
       date: format(data.date, 'yyyy-MM-dd'),
       description: data.description,
       category_id: data.category_id === 'none' ? null : data.category_id,
-      payment_method: data.payment_method || null,
+      payment_method: sanitizedMethod || null,
+      account_id: selectedAccountId,
       notes: data.notes || null,
       is_paid: data.is_paid ?? false,
     };
@@ -325,12 +440,59 @@ export default function TransactionForm() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Método de Pagamento</FormLabel>
+                      <PaymentMethodChips
+                        selected={field.value}
+                        onSelect={(value) => {
+                          field.onChange(value);
+                        }}
+                        options={PAYMENT_METHOD_OPTIONS}
+                      />
                       <FormControl>
                         <Input
                           placeholder="Ex: Cartão de crédito, Dinheiro, PIX"
                           {...field}
                         />
                       </FormControl>
+                      <FormDescription>
+                        Utilize um atalho acima ou informe manualmente o método.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="account_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Conta</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione uma conta" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">Sem conta vinculada</SelectItem>
+                          {filteredAccounts.map((account) => (
+                            <SelectItem key={account.id} value={account.id}>
+                              {account.name} — {getAccountTypeLabel(account.type)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {selectedAccount && balanceHint && (
+                        <FormDescription>{balanceHint}</FormDescription>
+                      )}
+                      {!selectedAccount && paymentMethod && compatibleAccountTypes && (
+                        <FormDescription>
+                          Selecione uma conta compatível com o método escolhido.
+                        </FormDescription>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}

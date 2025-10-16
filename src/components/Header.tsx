@@ -44,6 +44,9 @@ export function Header() {
           <Link to="/categorias" className="text-sm font-medium hover:text-primary transition-colors">
             Categorias
           </Link>
+          <Link to="/contas" className="text-sm font-medium hover:text-primary transition-colors">
+            Contas
+          </Link>
         </nav>
 
         <DropdownMenu>
