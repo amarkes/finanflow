@@ -214,14 +214,14 @@ export default function Dashboard() {
               Visão geral das suas finanças
             </p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
             <Select
               value={period}
               onValueChange={(value) =>
                 handlePeriodChange(value as PeriodOption)
               }
             >
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-full sm:w-[200px]">
                 <CalendarIcon className="mr-2 h-4 w-4" />
                 <SelectValue placeholder="Período" />
               </SelectTrigger>
@@ -255,9 +255,11 @@ export default function Dashboard() {
                 }}
               >
                 <PopoverTrigger asChild>
-                  <Button variant="outline">Selecionar intervalo</Button>
+                  <Button variant="outline" className="w-full sm:w-auto">
+                    Selecionar intervalo
+                  </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-4" align="end">
+                <PopoverContent className="w-auto p-4" align="start">
                   <Calendar
                     mode="range"
                     selected={customRange}
@@ -284,10 +286,14 @@ export default function Dashboard() {
               variant="ghost"
               onClick={handleResetFilters}
               disabled={period === "all" && !appliedRange}
+              className="w-full sm:w-auto"
             >
               Resetar
             </Button>
-            <Button onClick={() => navigate("/transacoes/nova")}>
+            <Button
+              onClick={() => navigate("/transacoes/nova")}
+              className="w-full sm:w-auto"
+            >
               Nova Transação
             </Button>
           </div>

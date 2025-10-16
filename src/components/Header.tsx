@@ -10,13 +10,31 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Wallet, LogOut, User, Settings } from 'lucide-react';
+import { Wallet, LogOut, Settings, Menu } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+  SheetClose,
+} from '@/components/ui/sheet';
+import { cn } from '@/lib/utils';
+import { useLocation } from 'react-router-dom';
+
+const NAV_LINKS = [
+  { to: '/', label: 'Dashboard' },
+  { to: '/transacoes', label: 'Transações' },
+  { to: '/categorias', label: 'Categorias' },
+  { to: '/contas', label: 'Contas' },
+];
 
 export function Header() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -35,19 +53,68 @@ export function Header() {
         </Link>
 
         <nav className="hidden md:flex items-center gap-6">
-          <Link to="/" className="text-sm font-medium hover:text-primary transition-colors">
-            Dashboard
-          </Link>
-          <Link to="/transacoes" className="text-sm font-medium hover:text-primary transition-colors">
-            Transações
-          </Link>
-          <Link to="/categorias" className="text-sm font-medium hover:text-primary transition-colors">
-            Categorias
-          </Link>
-          <Link to="/contas" className="text-sm font-medium hover:text-primary transition-colors">
-            Contas
-          </Link>
+          {NAV_LINKS.map((link) => (
+            <Link
+              key={link.to}
+              to={link.to}
+              className={cn(
+                'text-sm font-medium transition-colors hover:text-primary',
+                location.pathname === link.to ? 'text-primary' : 'text-foreground'
+              )}
+            >
+              {link.label}
+            </Link>
+          ))}
         </nav>
+
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button variant="outline" className="md:hidden">
+              <Menu className="h-5 w-5" />
+              <span className="sr-only">Abrir menu</span>
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="px-4 py-6">
+            <SheetHeader>
+              <SheetTitle>Navegação</SheetTitle>
+            </SheetHeader>
+            <nav className="mt-6 flex flex-col gap-4">
+              {NAV_LINKS.map((link) => (
+                <SheetClose asChild key={link.to}>
+                  <Link
+                    to={link.to}
+                    className={cn(
+                      'text-base font-medium transition-colors',
+                      location.pathname === link.to ? 'text-primary' : 'text-foreground hover:text-primary'
+                    )}
+                  >
+                    {link.label}
+                  </Link>
+                </SheetClose>
+              ))}
+              <SheetClose asChild>
+                <Button
+                  variant="ghost"
+                  className="justify-start gap-2"
+                  onClick={() => navigate('/configuracoes')}
+                >
+                  <Settings className="h-4 w-4" />
+                  Configurações
+                </Button>
+              </SheetClose>
+              <SheetClose asChild>
+                <Button
+                  variant="ghost"
+                  className="justify-start gap-2 text-destructive"
+                  onClick={handleLogout}
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sair
+                </Button>
+              </SheetClose>
+            </nav>
+          </SheetContent>
+        </Sheet>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
