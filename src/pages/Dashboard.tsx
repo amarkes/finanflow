@@ -1,54 +1,100 @@
-import { useState, useMemo } from 'react';
-import { Layout } from '@/components/Layout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { useTransactions } from '@/hooks/useTransactions';
-import { useAccounts } from '@/hooks/useAccounts';
-import { AccountsCard } from '@/components/accounts/AccountsCard';
-import { formatCentsToBRL, formatDate } from '@/lib/currency';
-import { TrendingUp, TrendingDown, Wallet, Calendar, Clock } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { useNavigate } from 'react-router-dom';
+import { useState, useMemo } from "react";
+import { Layout } from "@/components/Layout";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { useTransactions } from "@/hooks/useTransactions";
+import { useAccounts } from "@/hooks/useAccounts";
+import { AccountsCard } from "@/components/accounts/AccountsCard";
+import { formatCentsToBRL, formatDate } from "@/lib/currency";
+import {
+  TrendingUp,
+  TrendingDown,
+  Wallet,
+  Calendar as CalendarIcon,
+  Clock,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useNavigate } from "react-router-dom";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-import { Badge } from '@/components/ui/badge';
+} from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { toast } from "sonner";
+import { DateRange } from "react-day-picker";
+import {
+  format,
+  startOfDay,
+  startOfMonth,
+  endOfMonth,
+  subMonths,
+} from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { Badge } from "@/components/ui/badge";
+
+type PeriodOption = "current" | "last" | "all" | "today" | "custom";
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [period, setPeriod] = useState('current');
+  const [period, setPeriod] = useState<PeriodOption>("current");
+  const [customRange, setCustomRange] = useState<DateRange | undefined>();
+  const [appliedRange, setAppliedRange] = useState<DateRange | undefined>();
+  const [isCustomOpen, setIsCustomOpen] = useState(false);
+  const [customHasOpened, setCustomHasOpened] = useState(false);
+  const [previousPeriod, setPreviousPeriod] = useState<PeriodOption>("current");
 
   // Calcular datas do período
-  const { startDate, endDate } = useMemo(() => {
-    const now = new Date();
-    let start, end;
+  const { startDate, endDate, startDateObj, endDateObj } = useMemo(() => {
+    const now = startOfDay(new Date());
+    let start: Date | undefined;
+    let end: Date | undefined;
 
     switch (period) {
-      case 'current':
+      case "today":
+        start = now;
+        end = now;
+        break;
+      case "current":
         start = startOfMonth(now);
         end = endOfMonth(now);
         break;
-      case 'last':
+      case "last":
         const lastMonth = subMonths(now, 1);
         start = startOfMonth(lastMonth);
         end = endOfMonth(lastMonth);
         break;
-      case 'all':
+      case "custom":
+        if (appliedRange?.from && appliedRange?.to) {
+          start = startOfDay(appliedRange.from);
+          end = startOfDay(appliedRange.to);
+        }
+        break;
+      case "all":
       default:
         start = undefined;
         end = undefined;
     }
 
     return {
-      startDate: start ? format(start, 'yyyy-MM-dd') : undefined,
-      endDate: end ? format(end, 'yyyy-MM-dd') : undefined,
+      startDate: start ? format(start, "yyyy-MM-dd") : undefined,
+      endDate: end ? format(end, "yyyy-MM-dd") : undefined,
+      startDateObj: start,
+      endDateObj: end,
     };
-  }, [period]);
+  }, [period, appliedRange]);
 
   const { data: transactions, isLoading } = useTransactions({
     startDate,
@@ -56,16 +102,81 @@ export default function Dashboard() {
   });
   const { data: accounts } = useAccounts({ isActive: true });
 
+  const periodLabel = useMemo(() => {
+    if (startDateObj && endDateObj) {
+      const formattedStart = format(startDateObj, "dd/MM/yyyy");
+      const formattedEnd = format(endDateObj, "dd/MM/yyyy");
+      return `Período: ${formattedStart} → ${formattedEnd}`;
+    }
+
+    if (period === "all") {
+      return "Período: Todos";
+    }
+
+    return null;
+  }, [startDateObj, endDateObj, period]);
+
+  const handleApplyCustomRange = () => {
+    if (!customRange?.from || !customRange?.to) {
+      toast.error("Selecione uma data inicial e final.");
+      return;
+    }
+    setAppliedRange(customRange);
+    setPeriod("custom");
+    setPreviousPeriod("custom");
+    setIsCustomOpen(false);
+    setCustomHasOpened(false);
+  };
+
+  const handleCancelCustomRange = () => {
+    setIsCustomOpen(false);
+    setCustomRange(appliedRange);
+    if (!appliedRange?.from || !appliedRange?.to) {
+      setPeriod(previousPeriod);
+    }
+    setCustomHasOpened(false);
+  };
+
+  const handleResetFilters = () => {
+    setPeriod("all");
+    setAppliedRange(undefined);
+    setCustomRange(undefined);
+    setPreviousPeriod("all");
+    setIsCustomOpen(false);
+    setCustomHasOpened(false);
+  };
+
+  const handlePeriodChange = (value: PeriodOption) => {
+    if (value === "custom") {
+      setPreviousPeriod(period);
+      setPeriod("custom");
+      setCustomRange(
+        appliedRange ?? {
+          from: startOfDay(new Date()),
+          to: startOfDay(new Date()),
+        }
+      );
+      setIsCustomOpen(true);
+      setCustomHasOpened(false);
+      return;
+    }
+
+    setPeriod(value);
+    setPreviousPeriod(value);
+    setAppliedRange(undefined);
+    setCustomRange(undefined);
+  };
+
   // Calcular totais
   const stats = useMemo(() => {
     if (!transactions) return { income: 0, expense: 0, balance: 0 };
 
     const income = transactions
-      .filter((t) => t.type === 'income')
+      .filter((t) => t.type === "income")
       .reduce((sum, t) => sum + t.amount_cents, 0);
 
     const expense = transactions
-      .filter((t) => t.type === 'expense')
+      .filter((t) => t.type === "expense")
       .reduce((sum, t) => sum + t.amount_cents, 0);
 
     return {
@@ -104,33 +215,100 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex items-center gap-4">
-            <Select value={period} onValueChange={setPeriod}>
+            <Select
+              value={period}
+              onValueChange={(value) =>
+                handlePeriodChange(value as PeriodOption)
+              }
+            >
               <SelectTrigger className="w-[180px]">
-                <Calendar className="mr-2 h-4 w-4" />
+                <CalendarIcon className="mr-2 h-4 w-4" />
                 <SelectValue placeholder="Período" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="today">Hoje</SelectItem>
                 <SelectItem value="current">Mês Atual</SelectItem>
                 <SelectItem value="last">Mês Anterior</SelectItem>
                 <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="custom">Personalizado…</SelectItem>
               </SelectContent>
             </Select>
-            <Button onClick={() => navigate('/transacoes/nova')}>
+            {period === "custom" && (
+              <Popover
+                open={isCustomOpen}
+                onOpenChange={(open) => {
+                  setIsCustomOpen(open);
+                  if (open) {
+                    setCustomHasOpened(true);
+                    return;
+                  }
+
+                  if (!customHasOpened) {
+                    return;
+                  }
+
+                  setCustomRange(appliedRange);
+                  if (!appliedRange?.from || !appliedRange?.to) {
+                    setPeriod(previousPeriod);
+                  }
+                  setCustomHasOpened(false);
+                }}
+              >
+                <PopoverTrigger asChild>
+                  <Button variant="outline">Selecionar intervalo</Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-4" align="end">
+                  <Calendar
+                    mode="range"
+                    selected={customRange}
+                    onSelect={setCustomRange}
+                    numberOfMonths={1}
+                    initialFocus
+                    locale={ptBR}
+                  />
+                  <div className="flex justify-end gap-2 pt-4">
+                    <Button variant="outline" onClick={handleCancelCustomRange}>
+                      Cancelar
+                    </Button>
+                    <Button
+                      onClick={handleApplyCustomRange}
+                      disabled={!customRange?.from || !customRange?.to}
+                    >
+                      Aplicar
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
+            <Button
+              variant="ghost"
+              onClick={handleResetFilters}
+              disabled={period === "all" && !appliedRange}
+            >
+              Resetar
+            </Button>
+            <Button onClick={() => navigate("/transacoes/nova")}>
               Nova Transação
             </Button>
           </div>
         </div>
 
+        {periodLabel && (
+          <p className="text-sm text-muted-foreground">{periodLabel}</p>
+        )}
+
         <div className="grid gap-4 md:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Saldo Atual
-              </CardTitle>
+              <CardTitle className="text-sm font-medium">Saldo Atual</CardTitle>
               <Wallet className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className={`text-2xl font-bold ${stats.balance >= 0 ? 'text-primary' : 'text-destructive'}`}>
+              <div
+                className={`text-2xl font-bold ${
+                  stats.balance >= 0 ? "text-primary" : "text-destructive"
+                }`}
+              >
                 {formatCentsToBRL(stats.balance)}
               </div>
               <p className="text-xs text-muted-foreground">
@@ -191,7 +369,7 @@ export default function Dashboard() {
                 <Button
                   variant="link"
                   className="px-0 mt-2"
-                  onClick={() => navigate('/transacoes?status=pending')}
+                  onClick={() => navigate("/transacoes?status=pending")}
                 >
                   Ver pendentes
                 </Button>
@@ -203,9 +381,7 @@ export default function Dashboard() {
         <Card>
           <CardHeader>
             <CardTitle>Últimas Transações</CardTitle>
-            <CardDescription>
-              As 5 transações mais recentes
-            </CardDescription>
+            <CardDescription>As 5 transações mais recentes</CardDescription>
           </CardHeader>
           <CardContent>
             {recentTransactions.length === 0 ? (
@@ -218,14 +394,16 @@ export default function Dashboard() {
                   <div
                     key={transaction.id}
                     className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
-                    onClick={() => navigate(`/transacoes/${transaction.id}/editar`)}
+                    onClick={() =>
+                      navigate(`/transacoes/${transaction.id}/editar`)
+                    }
                   >
                     <div className="flex items-center gap-4">
                       <div
                         className={`h-2 w-2 rounded-full ${
-                          transaction.type === 'income'
-                            ? 'bg-green-600'
-                            : 'bg-red-600'
+                          transaction.type === "income"
+                            ? "bg-green-600"
+                            : "bg-red-600"
                         }`}
                       />
                       <div>
@@ -242,21 +420,21 @@ export default function Dashboard() {
                       <Badge
                         className={
                           transaction.is_paid
-                            ? 'bg-green-100 text-green-700 border-green-200'
-                            : 'bg-amber-100 text-amber-700 border-amber-200'
+                            ? "bg-green-100 text-green-700 border-green-200"
+                            : "bg-amber-100 text-amber-700 border-amber-200"
                         }
                         variant="outline"
                       >
-                        {transaction.is_paid ? 'Paga' : 'Pendente'}
+                        {transaction.is_paid ? "Paga" : "Pendente"}
                       </Badge>
                       <p
                         className={`font-semibold ${
-                          transaction.type === 'income'
-                            ? 'text-green-600'
-                            : 'text-red-600'
+                          transaction.type === "income"
+                            ? "text-green-600"
+                            : "text-red-600"
                         }`}
                       >
-                        {transaction.type === 'income' ? '+' : '-'}
+                        {transaction.type === "income" ? "+" : "-"}
                         {formatCentsToBRL(transaction.amount_cents)}
                       </p>
                     </div>
@@ -268,7 +446,7 @@ export default function Dashboard() {
               <Button
                 variant="outline"
                 className="w-full mt-4"
-                onClick={() => navigate('/transacoes')}
+                onClick={() => navigate("/transacoes")}
               >
                 Ver Todas as Transações
               </Button>
