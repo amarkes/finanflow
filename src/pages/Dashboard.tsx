@@ -3,7 +3,7 @@ import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useTransactions } from '@/hooks/useTransactions';
 import { formatCentsToBRL, formatDate } from '@/lib/currency';
-import { TrendingUp, TrendingDown, Wallet, Calendar } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, Calendar, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/select';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { Badge } from '@/components/ui/badge';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -71,6 +72,11 @@ export default function Dashboard() {
     };
   }, [transactions]);
 
+  const pendingCount = useMemo(() => {
+    if (!transactions) return 0;
+    return transactions.filter((t) => !t.is_paid).length;
+  }, [transactions]);
+
   // Últimas 5 transações
   const recentTransactions = transactions?.slice(0, 5) || [];
 
@@ -112,7 +118,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
@@ -163,6 +169,32 @@ export default function Dashboard() {
               </p>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">
+                Transações Pendentes
+              </CardTitle>
+              <Clock className="h-4 w-4 text-amber-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-amber-600">
+                {pendingCount}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Aguardando pagamento
+              </p>
+              {pendingCount > 0 && (
+                <Button
+                  variant="link"
+                  className="px-0 mt-2"
+                  onClick={() => navigate('/transacoes?status=pending')}
+                >
+                  Ver pendentes
+                </Button>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         <Card>
@@ -203,16 +235,28 @@ export default function Dashboard() {
                         </p>
                       </div>
                     </div>
-                    <p
-                      className={`font-semibold ${
-                        transaction.type === 'income'
-                          ? 'text-green-600'
-                          : 'text-red-600'
-                      }`}
-                    >
-                      {transaction.type === 'income' ? '+' : '-'}
-                      {formatCentsToBRL(transaction.amount_cents)}
-                    </p>
+                    <div className="flex items-center gap-3">
+                      <Badge
+                        className={
+                          transaction.is_paid
+                            ? 'bg-green-100 text-green-700 border-green-200'
+                            : 'bg-amber-100 text-amber-700 border-amber-200'
+                        }
+                        variant="outline"
+                      >
+                        {transaction.is_paid ? 'Paga' : 'Pendente'}
+                      </Badge>
+                      <p
+                        className={`font-semibold ${
+                          transaction.type === 'income'
+                            ? 'text-green-600'
+                            : 'text-red-600'
+                        }`}
+                      >
+                        {transaction.type === 'income' ? '+' : '-'}
+                        {formatCentsToBRL(transaction.amount_cents)}
+                      </p>
+                    </div>
                   </div>
                 ))}
               </div>

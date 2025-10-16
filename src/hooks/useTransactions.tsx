@@ -3,6 +3,11 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 
+export interface TransactionCategoryReference {
+  name: string;
+  color: string;
+}
+
 export interface Transaction {
   id: string;
   user_id: string;
@@ -13,7 +18,9 @@ export interface Transaction {
   category_id: string | null;
   payment_method: string | null;
   notes: string | null;
+  is_paid: boolean;
   created_at: string;
+  categories?: TransactionCategoryReference | null;
 }
 
 export interface TransactionFilters {
@@ -22,7 +29,21 @@ export interface TransactionFilters {
   type?: 'income' | 'expense';
   categoryId?: string;
   search?: string;
+  status?: 'paid' | 'pending';
 }
+
+type TransactionInsertInput = {
+  type: 'income' | 'expense';
+  amount_cents: number;
+  date: string;
+  description: string;
+  category_id?: string | null;
+  payment_method?: string | null;
+  notes?: string | null;
+  is_paid: boolean;
+};
+
+type TransactionUpdateInput = Partial<TransactionInsertInput> & { id: string };
 
 export function useTransactions(filters?: TransactionFilters) {
   return useQuery({
@@ -45,6 +66,10 @@ export function useTransactions(filters?: TransactionFilters) {
       if (filters?.categoryId) {
         query = query.eq('category_id', filters.categoryId);
       }
+      if (filters?.status) {
+        const isPaid = filters.status === 'paid';
+        query = query.eq('is_paid', isPaid);
+      }
       if (filters?.search) {
         query = query.ilike('description', `%${filters.search}%`);
       }
@@ -52,7 +77,7 @@ export function useTransactions(filters?: TransactionFilters) {
       const { data, error } = await query;
 
       if (error) throw error;
-      return data as any[];
+      return data as Transaction[];
     },
   });
 }
@@ -62,19 +87,22 @@ export function useCreateTransaction() {
   const { user } = useAuth();
 
   return useMutation({
-    mutationFn: async (transaction: Omit<Transaction, 'id' | 'user_id' | 'created_at'>) => {
+    mutationFn: async (transaction: TransactionInsertInput) => {
       if (!user) {
         throw new Error('Usuário não autenticado');
       }
 
       const payload = {
         ...transaction,
+        category_id: transaction.category_id ?? null,
+        payment_method: transaction.payment_method ?? null,
+        notes: transaction.notes ?? null,
         user_id: user.id,
       };
 
       const { data, error } = await supabase
         .from('transactions')
-        .insert([payload as any])
+        .insert([payload])
         .select()
         .single();
 
@@ -95,10 +123,22 @@ export function useUpdateTransaction() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, ...transaction }: Partial<Transaction> & { id: string }) => {
+    mutationFn: async ({ id, ...transaction }: TransactionUpdateInput) => {
+      const payload: Record<string, unknown> = { ...transaction };
+
+      if (payload.category_id === undefined) {
+        delete payload.category_id;
+      }
+      if (payload.payment_method === undefined) {
+        delete payload.payment_method;
+      }
+      if (payload.notes === undefined) {
+        delete payload.notes;
+      }
+
       const { data, error } = await supabase
         .from('transactions')
-        .update(transaction)
+        .update(payload)
         .eq('id', id)
         .select()
         .single();

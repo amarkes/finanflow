@@ -1,7 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Layout } from '@/components/Layout';
-import { useNavigate } from 'react-router-dom';
-import { useTransactions, useDeleteTransaction } from '@/hooks/useTransactions';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  useTransactions,
+  useDeleteTransaction,
+  useUpdateTransaction,
+  type Transaction,
+} from '@/hooks/useTransactions';
 import { useCategories } from '@/hooks/useCategories';
 import { formatCentsToBRL, formatDate } from '@/lib/currency';
 import { Button } from '@/components/ui/button';
@@ -31,29 +36,84 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Search, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, CheckCircle2, Clock } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 export default function Transactions() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'pending'>(() => {
+    const statusParam = searchParams.get('status');
+    return statusParam === 'paid' || statusParam === 'pending' ? statusParam : 'all';
+  });
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [toggleTarget, setToggleTarget] = useState<{
+    id: string;
+    description: string;
+    currentStatus: boolean;
+    nextStatus: boolean;
+  } | null>(null);
 
   const { data: categories } = useCategories();
   const { data: transactions, isLoading } = useTransactions({
     search,
     type: typeFilter !== 'all' ? typeFilter : undefined,
     categoryId: categoryFilter !== 'all' ? categoryFilter : undefined,
+    status: statusFilter !== 'all' ? statusFilter : undefined,
   });
   const deleteMutation = useDeleteTransaction();
+  const updateMutation = useUpdateTransaction();
+
+  useEffect(() => {
+    const statusParam = searchParams.get('status');
+    if (statusParam === 'paid' || statusParam === 'pending') {
+      setStatusFilter(statusParam);
+    } else {
+      setStatusFilter('all');
+    }
+  }, [searchParams]);
+
+  const handleStatusFilterChange = (value: 'all' | 'paid' | 'pending') => {
+    setStatusFilter(value);
+    const params = new URLSearchParams(searchParams);
+    if (value === 'all') {
+      params.delete('status');
+    } else {
+      params.set('status', value);
+    }
+    setSearchParams(params, { replace: true });
+  };
 
   const handleDelete = () => {
     if (deleteId) {
       deleteMutation.mutate(deleteId);
       setDeleteId(null);
     }
+  };
+
+  const handleRequestStatusChange = (transaction: Transaction) => {
+    setToggleTarget({
+      id: transaction.id,
+      description: transaction.description,
+      currentStatus: transaction.is_paid,
+      nextStatus: !transaction.is_paid,
+    });
+  };
+
+  const isRowUpdating = (transactionId: string) =>
+    updateMutation.isPending && updateMutation.variables?.id === transactionId;
+
+  const handleConfirmToggle = () => {
+    if (!toggleTarget) return;
+    updateMutation.mutate(
+      { id: toggleTarget.id, is_paid: toggleTarget.nextStatus },
+      {
+        onSettled: () => setToggleTarget(null),
+      }
+    );
   };
 
   return (
@@ -107,6 +167,22 @@ export default function Transactions() {
               ))}
             </SelectContent>
           </Select>
+
+          <Select
+            value={statusFilter}
+            onValueChange={(value) =>
+              handleStatusFilterChange(value as 'all' | 'paid' | 'pending')
+            }
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="paid">Pagas</SelectItem>
+              <SelectItem value="pending">Pendentes</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {isLoading ? (
@@ -122,6 +198,7 @@ export default function Transactions() {
                   <TableHead>Descrição</TableHead>
                   <TableHead>Categoria</TableHead>
                   <TableHead>Tipo</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
@@ -159,6 +236,18 @@ export default function Transactions() {
                         {transaction.type === 'income' ? 'Receita' : 'Despesa'}
                       </Badge>
                     </TableCell>
+                    <TableCell>
+                      <Badge
+                        className={
+                          transaction.is_paid
+                            ? 'bg-green-100 text-green-700 border-green-200'
+                            : 'bg-amber-100 text-amber-700 border-amber-200'
+                        }
+                        variant="outline"
+                      >
+                        {transaction.is_paid ? 'Paga' : 'Pendente'}
+                      </Badge>
+                    </TableCell>
                     <TableCell
                       className={`text-right font-semibold ${
                         transaction.type === 'income'
@@ -171,6 +260,28 @@ export default function Transactions() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRequestStatusChange(transaction)}
+                          disabled={isRowUpdating(transaction.id)}
+                          aria-label={
+                            transaction.is_paid
+                              ? 'Marcar como pendente'
+                              : 'Marcar como paga'
+                          }
+                          title={
+                            transaction.is_paid
+                              ? 'Marcar como pendente'
+                              : 'Marcar como paga'
+                          }
+                        >
+                          {transaction.is_paid ? (
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <Clock className="h-4 w-4 text-amber-600" />
+                          )}
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -207,6 +318,32 @@ export default function Transactions() {
           </div>
         )}
       </div>
+
+      <AlertDialog open={!!toggleTarget} onOpenChange={(open) => !open && setToggleTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Confirmar alteração de status
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {toggleTarget
+                ? `Deseja marcar a transação "${toggleTarget.description}" como ${toggleTarget.nextStatus ? 'paga' : 'pendente'}?`
+                : ''}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={updateMutation.isPending}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmToggle}
+              disabled={updateMutation.isPending}
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
         <AlertDialogContent>
