@@ -8,7 +8,9 @@ import {
   type Transaction,
 } from '@/hooks/useTransactions';
 import { useCategories } from '@/hooks/useCategories';
+import { useAccounts } from '@/hooks/useAccounts';
 import { formatCentsToBRL, formatDate } from '@/lib/currency';
+import { getAccountTypeLabel } from '@/lib/account';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -49,6 +51,10 @@ export default function Transactions() {
     const statusParam = searchParams.get('status');
     return statusParam === 'paid' || statusParam === 'pending' ? statusParam : 'all';
   });
+  const [accountFilter, setAccountFilter] = useState<string>(() => {
+    const accountParam = searchParams.get('account');
+    return accountParam ?? 'all';
+  });
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [toggleTarget, setToggleTarget] = useState<{
     id: string;
@@ -58,11 +64,13 @@ export default function Transactions() {
   } | null>(null);
 
   const { data: categories } = useCategories();
+  const { data: accounts } = useAccounts({ isActive: true });
   const { data: transactions, isLoading } = useTransactions({
     search,
     type: typeFilter !== 'all' ? typeFilter : undefined,
     categoryId: categoryFilter !== 'all' ? categoryFilter : undefined,
     status: statusFilter !== 'all' ? statusFilter : undefined,
+    accountId: accountFilter !== 'all' ? accountFilter : undefined,
   });
   const deleteMutation = useDeleteTransaction();
   const updateMutation = useUpdateTransaction();
@@ -74,6 +82,13 @@ export default function Transactions() {
     } else {
       setStatusFilter('all');
     }
+
+    const accountParam = searchParams.get('account');
+    if (accountParam) {
+      setAccountFilter(accountParam);
+    } else {
+      setAccountFilter('all');
+    }
   }, [searchParams]);
 
   const handleStatusFilterChange = (value: 'all' | 'paid' | 'pending') => {
@@ -83,6 +98,17 @@ export default function Transactions() {
       params.delete('status');
     } else {
       params.set('status', value);
+    }
+    setSearchParams(params, { replace: true });
+  };
+
+  const handleAccountFilterChange = (value: string) => {
+    setAccountFilter(value);
+    const params = new URLSearchParams(searchParams);
+    if (value === 'all') {
+      params.delete('account');
+    } else {
+      params.set('account', value);
     }
     setSearchParams(params, { replace: true });
   };
@@ -132,7 +158,7 @@ export default function Transactions() {
           </Button>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -183,6 +209,23 @@ export default function Transactions() {
               <SelectItem value="pending">Pendentes</SelectItem>
             </SelectContent>
           </Select>
+
+          <Select
+            value={accountFilter}
+            onValueChange={(value) => handleAccountFilterChange(value)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Conta" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas</SelectItem>
+              {accounts?.map((account) => (
+                <SelectItem key={account.id} value={account.id}>
+                  {account.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {isLoading ? (
@@ -197,6 +240,7 @@ export default function Transactions() {
                   <TableHead>Data</TableHead>
                   <TableHead>Descrição</TableHead>
                   <TableHead>Categoria</TableHead>
+                  <TableHead>Conta</TableHead>
                   <TableHead>Tipo</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
@@ -221,6 +265,18 @@ export default function Transactions() {
                         >
                           {transaction.categories.name}
                         </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {transaction.account ? (
+                        <div className="flex flex-col">
+                          <span className="font-medium">{transaction.account.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {getAccountTypeLabel(transaction.account.type)}
+                          </span>
+                        </div>
                       ) : (
                         <span className="text-muted-foreground">-</span>
                       )}

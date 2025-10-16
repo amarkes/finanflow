@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useTransactions } from '@/hooks/useTransactions';
+import { useAccounts } from '@/hooks/useAccounts';
+import { AccountsCard } from '@/components/accounts/AccountsCard';
 import { formatCentsToBRL, formatDate } from '@/lib/currency';
 import { TrendingUp, TrendingDown, Wallet, Calendar, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -52,6 +54,7 @@ export default function Dashboard() {
     startDate,
     endDate,
   });
+  const { data: accounts } = useAccounts({ isActive: true });
 
   // Calcular totais
   const stats = useMemo(() => {
@@ -272,6 +275,7 @@ export default function Dashboard() {
             )}
           </CardContent>
         </Card>
+        <AccountsCard accounts={accounts} transactions={transactions} />
       </div>
     </Layout>
   );

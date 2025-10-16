@@ -64,40 +64,43 @@ export type Database = {
       }
       transactions: {
         Row: {
-      amount_cents: number
-      category_id: string | null
-      created_at: string
-      date: string
-      description: string
-      id: string
-      is_paid: boolean
-      notes: string | null
-      payment_method: string | null
-      type: string
-      user_id: string
-    }
+          amount_cents: number
+          account_id: string | null
+          category_id: string | null
+          created_at: string
+          date: string
+          description: string
+          id: string
+          is_paid: boolean
+          notes: string | null
+          payment_method: string | null
+          type: string
+          user_id: string
+        }
         Insert: {
-      amount_cents: number
-      category_id?: string | null
-      created_at?: string
-      date?: string
-      description: string
-      id?: string
-      is_paid?: boolean
-      notes?: string | null
-      payment_method?: string | null
-      type: string
-      user_id: string
-    }
+          amount_cents: number
+          account_id?: string | null
+          category_id?: string | null
+          created_at?: string
+          date?: string
+          description: string
+          id?: string
+          is_paid?: boolean
+          notes?: string | null
+          payment_method?: string | null
+          type: string
+          user_id: string
+        }
         Update: {
-      amount_cents?: number
-      category_id?: string | null
-      created_at?: string
-      date?: string
-      description?: string
-      id?: string
-      is_paid?: boolean
-      notes?: string | null
+          amount_cents?: number
+          account_id?: string | null
+          category_id?: string | null
+          created_at?: string
+          date?: string
+          description?: string
+          id?: string
+          is_paid?: boolean
+          notes?: string | null
       payment_method?: string | null
       type?: string
       user_id?: string
@@ -110,7 +113,47 @@ export type Database = {
             referencedRelation: "categories"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "transactions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      accounts: {
+        Row: {
+          balance_cents: number | null
+          created_at: string
+          id: string
+          is_active: boolean
+          limit_cents: number | null
+          name: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          balance_cents?: number | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          limit_cents?: number | null
+          name: string
+          type: string
+          user_id: string
+        }
+        Update: {
+          balance_cents?: number | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          limit_cents?: number | null
+          name?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
       }
     }
     Views: {
