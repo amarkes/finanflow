@@ -11,6 +11,7 @@ import { useTransactions } from "@/hooks/useTransactions";
 import { useAccounts } from "@/hooks/useAccounts";
 import { AccountsCard } from "@/components/accounts/AccountsCard";
 import { formatCentsToBRL, formatDate } from "@/lib/currency";
+import { formatSeriesLabel, isSeriesType } from "@/lib/transactions";
 import {
   TrendingUp,
   TrendingDown,
@@ -420,6 +421,11 @@ export default function Dashboard() {
                             <> • {transaction.categories.name}</>
                           )}
                         </p>
+                        {isSeriesType(transaction.series_type) && (
+                          <Badge variant="secondary" className="mt-2 w-fit">
+                            {formatSeriesLabel(transaction)}
+                          </Badge>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
