@@ -1,3 +1,6 @@
 - [x] precisa poder no login e na senha ter opcao de mostrar ou esconder a senha no input de senha
 - [x] no dashboard os filtros no mobile estao quebrados, precisa deixar-los responsivos
 - [x] no mobile nao mostra o menu
+
+- [ ] criar menu para inserir melhorias
+- [ ] criar opcao de cadastrar transacoes parcelas ou transacao mensal
