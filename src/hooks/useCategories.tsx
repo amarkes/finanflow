@@ -3,6 +3,25 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string') {
+      return message;
+    }
+  }
+
+  if (typeof error === 'string') {
+    return error;
+  }
+
+  return '';
+}
+
 export interface Category {
   id: string;
   user_id: string;
@@ -56,8 +75,9 @@ export function useCreateCategory() {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       toast.success('Categoria criada com sucesso!');
     },
-    onError: (error: any) => {
-      toast.error(error.message || 'Erro ao criar categoria');
+    onError: (error) => {
+      const message = getErrorMessage(error) || 'Erro ao criar categoria';
+      toast.error(message);
     },
   });
 }
@@ -81,8 +101,9 @@ export function useUpdateCategory() {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       toast.success('Categoria atualizada com sucesso!');
     },
-    onError: (error: any) => {
-      toast.error(error.message || 'Erro ao atualizar categoria');
+    onError: (error) => {
+      const message = getErrorMessage(error) || 'Erro ao atualizar categoria';
+      toast.error(message);
     },
   });
 }
@@ -103,8 +124,9 @@ export function useDeleteCategory() {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       toast.success('Categoria excluída com sucesso!');
     },
-    onError: (error: any) => {
-      toast.error(error.message || 'Erro ao excluir categoria');
+    onError: (error) => {
+      const message = getErrorMessage(error) || 'Erro ao excluir categoria';
+      toast.error(message);
     },
   });
 }

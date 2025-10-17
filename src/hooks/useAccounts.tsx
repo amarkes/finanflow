@@ -3,6 +3,25 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string') {
+      return message;
+    }
+  }
+
+  if (typeof error === 'string') {
+    return error;
+  }
+
+  return '';
+}
+
 export type AccountType =
   | 'credit_card'
   | 'debit_card'
@@ -94,8 +113,9 @@ export function useCreateAccount() {
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
       toast.success('Conta criada com sucesso!');
     },
-    onError: (error: any) => {
-      toast.error(error.message || 'Erro ao criar conta');
+    onError: (error) => {
+      const message = getErrorMessage(error) || 'Erro ao criar conta';
+      toast.error(message);
     },
   });
 }
@@ -135,8 +155,9 @@ export function useUpdateAccount() {
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
       toast.success('Conta atualizada com sucesso!');
     },
-    onError: (error: any) => {
-      toast.error(error.message || 'Erro ao atualizar conta');
+    onError: (error) => {
+      const message = getErrorMessage(error) || 'Erro ao atualizar conta';
+      toast.error(message);
     },
   });
 }
@@ -157,8 +178,9 @@ export function useDeleteAccount() {
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
       toast.success('Conta excluída com sucesso!');
     },
-    onError: (error: any) => {
-      toast.error(error.message || 'Erro ao excluir conta');
+    onError: (error) => {
+      const message = getErrorMessage(error) || 'Erro ao excluir conta';
+      toast.error(message);
     },
   });
 }
