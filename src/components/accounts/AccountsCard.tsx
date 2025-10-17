@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { Account } from '@/hooks/useAccounts';
@@ -5,6 +6,25 @@ import type { Transaction } from '@/hooks/useTransactions';
 import { formatCentsToBRL } from '@/lib/currency';
 import { CreditCard, Wallet, Banknote, Landmark } from 'lucide-react';
 import { getAccountTypeLabel } from '@/lib/account';
+import { useCreditCardInstallmentsSummary } from '@/hooks/useCreditCardInstallments';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+
+interface AccountsCardProps {
+  accounts: Account[] | undefined;
+  transactions: Transaction[] | undefined;
+  periodStart?: string;
+  periodEnd?: string;
+}
+
+interface CreditCardSummary {
+  account: Account;
+  invoiceCents: number;
+  futureAmountCents: number;
+  totalParceladoCents: number;
+  remainingInstallments: number;
+  limitAvailableTotalCents: number | null;
+}
 
 function getAccountIcon(type: Account['type']) {
   switch (type) {
@@ -25,47 +45,180 @@ function getAccountIcon(type: Account['type']) {
   }
 }
 
-function computeOutstandingForCreditCard(account: Account, transactions: Transaction[]) {
-  const totalExpenses = transactions
-    .filter(
-      (transaction) =>
-        transaction.account_id === account.id &&
+function formatMonthLabel(periodStart?: string, periodEnd?: string) {
+  if (!periodStart || !periodEnd) return null;
+
+  const start = new Date(periodStart);
+  const end = new Date(periodEnd);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return null;
+  }
+
+  const sameMonth =
+    start.getFullYear() === end.getFullYear() &&
+    start.getMonth() === end.getMonth();
+
+  if (!sameMonth) return null;
+
+  const label = format(start, 'MMMM/yyyy', { locale: ptBR });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+export function AccountsCard({
+  accounts,
+  transactions,
+  periodStart,
+  periodEnd,
+}: AccountsCardProps) {
+  const resolvedAccounts = useMemo(() => accounts ?? [], [accounts]);
+  const resolvedTransactions = useMemo(() => transactions ?? [], [transactions]);
+
+  const creditCardAccounts = useMemo(
+    () => resolvedAccounts.filter((account) => account.type === 'credit_card'),
+    [resolvedAccounts]
+  );
+
+  const creditCardAccountIds = useMemo(
+    () => creditCardAccounts.map((account) => account.id),
+    [creditCardAccounts]
+  );
+
+  const cutoffDateForFuture = useMemo(() => {
+    if (periodEnd) {
+      return periodEnd;
+    }
+    return format(new Date(), 'yyyy-MM-dd');
+  }, [periodEnd]);
+
+  const {
+    data: futureInstallmentsData,
+    isLoading: isLoadingFutureInstallments,
+    isFetching: isFetchingFutureInstallments,
+  } = useCreditCardInstallmentsSummary({
+    accountIds: creditCardAccountIds,
+    cutoffDate: cutoffDateForFuture,
+  });
+
+  const futureInstallmentsMap = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        futureAmountCents: number;
+        remainingInstallments: number;
+      }
+    >();
+
+    futureInstallmentsData?.forEach((item) => {
+      map.set(item.accountId, {
+        futureAmountCents: item.futureAmountCents,
+        remainingInstallments: item.remainingInstallments,
+      });
+    });
+
+    return map;
+  }, [futureInstallmentsData]);
+
+  const monthInvoiceByAccount = useMemo(() => {
+    return resolvedTransactions.reduce<Map<string, number>>((acc, transaction) => {
+      if (
+        transaction.account_id &&
         transaction.type === 'expense' &&
         !transaction.is_paid
-    )
-    .reduce((total, item) => total + item.amount_cents, 0);
+      ) {
+        const current = acc.get(transaction.account_id) ?? 0;
+        acc.set(transaction.account_id, current + transaction.amount_cents);
+      }
 
-  if (account.limit_cents === null) return null;
+      return acc;
+    }, new Map());
+  }, [resolvedTransactions]);
 
-  return account.limit_cents - totalExpenses;
-}
+  const creditCardSummaries = useMemo<CreditCardSummary[]>(() => {
+    return creditCardAccounts.map((account) => {
+      const invoiceCents = monthInvoiceByAccount.get(account.id) ?? 0;
+      const futureData = futureInstallmentsMap.get(account.id);
+      const futureAmountCents = futureData?.futureAmountCents ?? 0;
+      const remainingInstallments = futureData?.remainingInstallments ?? 0;
+      const totalParceladoCents = invoiceCents + futureAmountCents;
 
-function computeBalanceHint(account: Account, transactions: Transaction[]) {
-  if (account.type === 'credit_card') {
-    const remaining = computeOutstandingForCreditCard(account, transactions);
-    if (remaining === null) return 'Limite não informado';
-    return `Limite disponível: ${formatCentsToBRL(Math.max(remaining, 0))}`;
-  }
+      const limitAvailableTotalCents =
+        typeof account.limit_cents === 'number'
+          ? account.limit_cents - totalParceladoCents
+          : null;
 
-  if (account.balance_cents != null) {
-    return `Saldo estimado: ${formatCentsToBRL(account.balance_cents)}`;
-  }
+      return {
+        account,
+        invoiceCents,
+        futureAmountCents,
+        totalParceladoCents,
+        remainingInstallments,
+        limitAvailableTotalCents,
+      };
+    });
+  }, [creditCardAccounts, monthInvoiceByAccount, futureInstallmentsMap]);
 
-  return 'Saldo não informado';
-}
+  const creditCardSummaryMap = useMemo(() => {
+    return new Map(creditCardSummaries.map((summary) => [summary.account.id, summary]));
+  }, [creditCardSummaries]);
 
-interface AccountsCardProps {
-  accounts: Account[] | undefined;
-  transactions: Transaction[] | undefined;
-}
+  const creditCardAggregates = useMemo(() => {
+    return creditCardSummaries.reduce(
+      (acc, summary) => {
+        const limit = summary.account.limit_cents ?? 0;
+        const availableTotal =
+          typeof summary.limitAvailableTotalCents === 'number'
+            ? summary.limitAvailableTotalCents
+            : summary.account.limit_cents ?? 0;
 
-export function AccountsCard({ accounts, transactions }: AccountsCardProps) {
-  if (!accounts || accounts.length === 0) {
+        acc.limitTotal += limit;
+        acc.availableTotal += Math.max(availableTotal, 0);
+        acc.invoiceTotal += summary.invoiceCents;
+        acc.futureTotal += summary.futureAmountCents;
+        acc.totalParcelado += summary.totalParceladoCents;
+        acc.remainingInstallments += summary.remainingInstallments;
+        return acc;
+      },
+      {
+        limitTotal: 0,
+        availableTotal: 0,
+        invoiceTotal: 0,
+        futureTotal: 0,
+        totalParcelado: 0,
+        remainingInstallments: 0,
+      }
+    );
+  }, [creditCardSummaries]);
+
+  const otherBalancesTotal = useMemo(
+    () =>
+      resolvedAccounts
+        .filter((account) => account.type !== 'credit_card')
+        .reduce((total, account) => total + (account.balance_cents ?? 0), 0),
+    [resolvedAccounts]
+  );
+
+  const activeAccountsCount = useMemo(
+    () => resolvedAccounts.filter((account) => account.is_active).length,
+    [resolvedAccounts]
+  );
+
+  const monthLabel = useMemo(
+    () => formatMonthLabel(periodStart, periodEnd),
+    [periodStart, periodEnd]
+  );
+
+  const invoiceLabel = monthLabel ? `Fatura de ${monthLabel}` : 'Fatura do período';
+  const isFutureLoading = isLoadingFutureInstallments || isFetchingFutureInstallments;
+
+  if (resolvedAccounts.length === 0) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>Contas</CardTitle>
-          <CardDescription>Cadastre contas para controlar limites e saldos.</CardDescription>
+          <CardDescription>
+            Cadastre contas para controlar limites e saldos.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">Nenhuma conta cadastrada.</p>
@@ -74,26 +227,18 @@ export function AccountsCard({ accounts, transactions }: AccountsCardProps) {
     );
   }
 
-  const transactionsList = transactions || [];
-  const creditCardAccounts = accounts.filter((account) => account.type === 'credit_card');
-  const creditCardLimitTotal = creditCardAccounts.reduce(
-    (total, account) => total + (account.limit_cents ?? 0),
-    0
-  );
-  const creditCardAvailableTotal = creditCardAccounts.reduce((total, account) => {
-    const remaining = computeOutstandingForCreditCard(account, transactionsList);
-    return total + Math.max(remaining ?? 0, 0);
-  }, 0);
-
-  const otherBalancesTotal = accounts
-    .filter((account) => account.type !== 'credit_card')
-    .reduce((total, account) => total + (account.balance_cents ?? 0), 0);
-
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Contas</CardTitle>
-        <CardDescription>Acompanhe limites e saldos por conta.</CardDescription>
+      <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <CardTitle>Contas</CardTitle>
+          <CardDescription>Acompanhe limites e saldos por conta.</CardDescription>
+        </div>
+        {creditCardAccounts.length > 0 && isFutureLoading && (
+          <Badge variant="outline" className="text-xs w-fit">
+            Atualizando parcelas futuras…
+          </Badge>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-3">
@@ -101,16 +246,47 @@ export function AccountsCard({ accounts, transactions }: AccountsCardProps) {
             <p className="text-xs uppercase text-muted-foreground font-medium">
               Contas ativas
             </p>
-            <p className="text-lg font-semibold mt-1">{accounts.filter((account) => account.is_active).length}</p>
+            <p className="text-lg font-semibold mt-1">{activeAccountsCount}</p>
           </div>
           <div className="rounded-lg border p-3">
             <p className="text-xs uppercase text-muted-foreground font-medium">
               Limite disponível (cartões)
             </p>
-            <p className="text-lg font-semibold mt-1">{formatCentsToBRL(Math.max(creditCardAvailableTotal, 0))}</p>
-            {creditCardLimitTotal > 0 && (
+            <p className="text-lg font-semibold mt-1">
+              {formatCentsToBRL(
+                Math.max(
+                  creditCardAggregates.availableTotal,
+                  0
+                )
+              )}
+            </p>
+            {creditCardAccounts.length > 0 ? (
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p>
+                  Disponível (parcelado):{' '}
+                  {formatCentsToBRL(Math.max(creditCardAggregates.availableTotal, 0))}
+                  {creditCardAggregates.limitTotal > 0 && (
+                    <>
+                      {' '}
+                      de {formatCentsToBRL(creditCardAggregates.limitTotal)}
+                    </>
+                  )}
+                </p>
+                {creditCardAggregates.futureTotal > 0 && (
+                  <p>
+                    Parcelas futuras (valor):{' '}
+                    {formatCentsToBRL(creditCardAggregates.futureTotal)}
+                  </p>
+                )}
+                {creditCardAggregates.remainingInstallments > 0 && (
+                  <p>
+                    Qtd. parcelas futuras: {creditCardAggregates.remainingInstallments}
+                  </p>
+                )}
+              </div>
+            ) : (
               <p className="text-xs text-muted-foreground">
-                de {formatCentsToBRL(creditCardLimitTotal)}
+                Cadastre um cartão de crédito para acompanhar o limite.
               </p>
             )}
           </div>
@@ -118,17 +294,29 @@ export function AccountsCard({ accounts, transactions }: AccountsCardProps) {
             <p className="text-xs uppercase text-muted-foreground font-medium">
               Saldos estimados
             </p>
-            <p className="text-lg font-semibold mt-1">{formatCentsToBRL(Math.max(otherBalancesTotal, 0))}</p>
+            <p className="text-lg font-semibold mt-1">
+              {formatCentsToBRL(Math.max(otherBalancesTotal, 0))}
+            </p>
           </div>
         </div>
 
-        {accounts.map((account) => (
-          <div
-            key={account.id}
-            className="flex items-start justify-between rounded-lg border p-4"
-          >
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
+            {resolvedAccounts.map((account) => {
+              const isCreditCard = account.type === 'credit_card';
+              const creditSummary = creditCardSummaryMap.get(account.id);
+
+              const limitToShow =
+                creditSummary?.limitAvailableTotalCents ?? account.limit_cents;
+
+              const formattedLimitAvailable =
+                typeof limitToShow === 'number'
+                  ? formatCentsToBRL(Math.max(limitToShow, 0))
+                  : account.limit_cents != null
+              ? formatCentsToBRL(Math.max(account.limit_cents, 0))
+              : 'Não informado';
+
+          return (
+            <div key={account.id} className="rounded-lg border p-4 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
                 {getAccountIcon(account.type)}
                 <span className="font-semibold">{account.name}</span>
                 {!account.is_active && (
@@ -137,27 +325,81 @@ export function AccountsCard({ accounts, transactions }: AccountsCardProps) {
                   </Badge>
                 )}
               </div>
+
               <p className="text-sm text-muted-foreground">
                 {getAccountTypeLabel(account.type)}
               </p>
-              <p className="text-xs text-muted-foreground">
-                {computeBalanceHint(account, transactions || [])}
-              </p>
-            </div>
-            <div className="text-right space-y-1">
-              {account.limit_cents != null && (
-                <p className="text-sm">
-                  Limite: <span className="font-medium">{formatCentsToBRL(account.limit_cents)}</span>
-                </p>
+
+              {isCreditCard ? (
+                <div className="space-y-1 text-sm">
+                  <p>
+                    {invoiceLabel}:{' '}
+                    <span className="font-medium">
+                      {formatCentsToBRL(creditSummary?.invoiceCents ?? 0)}
+                    </span>
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>
+                      Total parcelado:{' '}
+                      <span className="font-medium">
+                        {formatCentsToBRL(creditSummary?.totalParceladoCents ?? 0)}
+                      </span>
+                    </span>
+                    {creditSummary?.remainingInstallments ? (
+                      <Badge variant="secondary" className="text-xs">
+                        {creditSummary.remainingInstallments} parcelas restantes
+                      </Badge>
+                    ) : null}
+                  </div>
+                  {creditSummary?.futureAmountCents ? (
+                    <p className="text-xs text-muted-foreground">
+                      Parcelas futuras incluídas: {formatCentsToBRL(creditSummary.futureAmountCents)}
+                    </p>
+                  ) : null}
+                  <p>
+                    Limite do cartão:{' '}
+                    <span className="font-medium">
+                      {typeof account.limit_cents === 'number'
+                        ? formatCentsToBRL(account.limit_cents)
+                        : 'Não informado'}
+                    </span>
+                  </p>
+                  <p>
+                    Limite disponível:{' '}
+                    <span className="font-medium">{formattedLimitAvailable}</span>
+                    {' *'}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    *Considerando parcelas futuras
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-3 text-sm">
+                  {account.limit_cents != null && (
+                    <span>
+                      Limite:{' '}
+                      <span className="font-medium">
+                        {formatCentsToBRL(account.limit_cents)}
+                      </span>
+                    </span>
+                  )}
+                  {account.balance_cents != null ? (
+                    <span>
+                      Saldo estimado:{' '}
+                      <span className="font-medium">
+                        {formatCentsToBRL(account.balance_cents)}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground text-xs">
+                      Saldo não informado
+                    </span>
+                  )}
+                </div>
               )}
-              {account.balance_cents != null && account.type !== 'credit_card' && (
-                <p className="text-sm">
-                  Saldo: <span className="font-medium">{formatCentsToBRL(account.balance_cents)}</span>
-                </p>
-              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </CardContent>
     </Card>
   );
