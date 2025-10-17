@@ -74,6 +74,11 @@ export type Database = {
           is_paid: boolean
           notes: string | null
           payment_method: string | null
+          series_amount_total_cents: number | null
+          series_id: string | null
+          series_sequence: number | null
+          series_total: number | null
+          series_type: Database["public"]["Enums"]["transaction_series_type"]
           type: string
           user_id: string
         }
@@ -88,6 +93,11 @@ export type Database = {
           is_paid?: boolean
           notes?: string | null
           payment_method?: string | null
+          series_amount_total_cents?: number | null
+          series_id?: string | null
+          series_sequence?: number | null
+          series_total?: number | null
+          series_type?: Database["public"]["Enums"]["transaction_series_type"]
           type: string
           user_id: string
         }
@@ -101,10 +111,15 @@ export type Database = {
           id?: string
           is_paid?: boolean
           notes?: string | null
-      payment_method?: string | null
-      type?: string
-      user_id?: string
-    }
+          payment_method?: string | null
+          series_amount_total_cents?: number | null
+          series_id?: string | null
+          series_sequence?: number | null
+          series_total?: number | null
+          series_type?: Database["public"]["Enums"]["transaction_series_type"]
+          type?: string
+          user_id?: string
+        }
         Relationships: [
           {
             foreignKeyName: "transactions_category_id_fkey"
@@ -166,7 +181,7 @@ export type Database = {
       }
     }
     Enums: {
-      [_ in never]: never
+      transaction_series_type: "single" | "installment" | "monthly"
     }
     CompositeTypes: {
       [_ in never]: never

@@ -11,6 +11,7 @@ import { useCategories } from '@/hooks/useCategories';
 import { useAccounts } from '@/hooks/useAccounts';
 import { formatCentsToBRL, formatDate } from '@/lib/currency';
 import { getAccountTypeLabel } from '@/lib/account';
+import { formatSeriesLabel, isSeriesType, type RecurrenceType } from '@/lib/transactions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -51,15 +52,19 @@ export default function Transactions() {
     const statusParam = searchParams.get('status');
     return statusParam === 'paid' || statusParam === 'pending' ? statusParam : 'all';
   });
+  const [seriesFilter, setSeriesFilter] = useState<'all' | RecurrenceType>(() => {
+    const seriesParam = searchParams.get('series');
+    return seriesParam === 'installment' || seriesParam === 'monthly' || seriesParam === 'single'
+      ? (seriesParam as RecurrenceType)
+      : 'all';
+  });
   const [accountFilter, setAccountFilter] = useState<string>(() => {
     const accountParam = searchParams.get('account');
     return accountParam ?? 'all';
   });
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
   const [toggleTarget, setToggleTarget] = useState<{
-    id: string;
-    description: string;
-    currentStatus: boolean;
+    transaction: Transaction;
     nextStatus: boolean;
   } | null>(null);
 
@@ -70,6 +75,7 @@ export default function Transactions() {
     type: typeFilter !== 'all' ? typeFilter : undefined,
     categoryId: categoryFilter !== 'all' ? categoryFilter : undefined,
     status: statusFilter !== 'all' ? statusFilter : undefined,
+    seriesType: seriesFilter !== 'all' ? seriesFilter : undefined,
     accountId: accountFilter !== 'all' ? accountFilter : undefined,
   });
   const deleteMutation = useDeleteTransaction();
@@ -88,6 +94,13 @@ export default function Transactions() {
       setAccountFilter(accountParam);
     } else {
       setAccountFilter('all');
+    }
+
+    const seriesParam = searchParams.get('series');
+    if (seriesParam === 'single' || seriesParam === 'installment' || seriesParam === 'monthly') {
+      setSeriesFilter(seriesParam as RecurrenceType);
+    } else {
+      setSeriesFilter('all');
     }
   }, [searchParams]);
 
@@ -113,18 +126,41 @@ export default function Transactions() {
     setSearchParams(params, { replace: true });
   };
 
-  const handleDelete = () => {
-    if (deleteId) {
-      deleteMutation.mutate(deleteId);
-      setDeleteId(null);
+  const handleSeriesFilterChange = (value: 'all' | RecurrenceType) => {
+    setSeriesFilter(value);
+    const params = new URLSearchParams(searchParams);
+    if (value === 'all') {
+      params.delete('series');
+    } else {
+      params.set('series', value);
     }
+    setSearchParams(params, { replace: true });
+  };
+
+  const handleDelete = (mode: 'single' | 'series_from_here') => {
+    if (!deleteTarget) return;
+
+    deleteMutation.mutate(
+      {
+        id: deleteTarget.id,
+        mode,
+        seriesMeta:
+          mode === 'series_from_here' && deleteTarget.series_id
+            ? {
+                series_id: deleteTarget.series_id,
+                series_sequence: deleteTarget.series_sequence ?? 1,
+              }
+            : undefined,
+      },
+      {
+        onSettled: () => setDeleteTarget(null),
+      }
+    );
   };
 
   const handleRequestStatusChange = (transaction: Transaction) => {
     setToggleTarget({
-      id: transaction.id,
-      description: transaction.description,
-      currentStatus: transaction.is_paid,
+      transaction,
       nextStatus: !transaction.is_paid,
     });
   };
@@ -132,10 +168,22 @@ export default function Transactions() {
   const isRowUpdating = (transactionId: string) =>
     updateMutation.isPending && updateMutation.variables?.id === transactionId;
 
-  const handleConfirmToggle = () => {
+  const handleConfirmToggle = (mode: 'single' | 'series_from_here') => {
     if (!toggleTarget) return;
+
     updateMutation.mutate(
-      { id: toggleTarget.id, is_paid: toggleTarget.nextStatus },
+      {
+        id: toggleTarget.transaction.id,
+        is_paid: toggleTarget.nextStatus,
+        applyMode: mode,
+        seriesMeta:
+          mode === 'series_from_here' && toggleTarget.transaction.series_id
+            ? {
+                series_id: toggleTarget.transaction.series_id,
+                series_sequence: toggleTarget.transaction.series_sequence ?? 1,
+              }
+            : undefined,
+      },
       {
         onSettled: () => setToggleTarget(null),
       }
@@ -158,7 +206,7 @@ export default function Transactions() {
           </Button>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-5">
+        <div className="grid gap-4 md:grid-cols-6">
           <div className="flex flex-col gap-2">
             <label htmlFor="transactions-search" className="text-sm font-medium text-muted-foreground">
               Buscar
@@ -179,7 +227,12 @@ export default function Transactions() {
             <label htmlFor="transactions-type" className="text-sm font-medium text-muted-foreground">
               Tipo
             </label>
-            <Select value={typeFilter} onValueChange={(v: any) => setTypeFilter(v)}>
+            <Select
+              value={typeFilter}
+              onValueChange={(value) =>
+                setTypeFilter(value as 'all' | 'income' | 'expense')
+              }
+            >
               <SelectTrigger id="transactions-type">
                 <SelectValue placeholder="Tipo" />
               </SelectTrigger>
@@ -252,6 +305,28 @@ export default function Transactions() {
               </SelectContent>
             </Select>
           </div>
+
+          <div className="flex flex-col gap-2">
+            <label htmlFor="transactions-series" className="text-sm font-medium text-muted-foreground">
+              Recorrência
+            </label>
+            <Select
+              value={seriesFilter}
+              onValueChange={(value) =>
+                handleSeriesFilterChange(value as 'all' | RecurrenceType)
+              }
+            >
+              <SelectTrigger id="transactions-series">
+                <SelectValue placeholder="Recorrência" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                <SelectItem value="single">Únicas</SelectItem>
+                <SelectItem value="installment">Parceladas</SelectItem>
+                <SelectItem value="monthly">Mensais</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {isLoading ? (
@@ -267,6 +342,7 @@ export default function Transactions() {
                   <TableHead>Descrição</TableHead>
                   <TableHead>Categoria</TableHead>
                   <TableHead>Conta</TableHead>
+                  <TableHead>Recorrência</TableHead>
                   <TableHead>Tipo</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
@@ -306,6 +382,13 @@ export default function Transactions() {
                       ) : (
                         <span className="text-muted-foreground">-</span>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={isSeriesType(transaction.series_type) ? 'secondary' : 'outline'}
+                      >
+                        {formatSeriesLabel(transaction)}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -376,7 +459,8 @@ export default function Transactions() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => setDeleteId(transaction.id)}
+                          onClick={() => setDeleteTarget(transaction)}
+                          disabled={deleteMutation.isPending}
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
@@ -401,46 +485,84 @@ export default function Transactions() {
         )}
       </div>
 
-      <AlertDialog open={!!toggleTarget} onOpenChange={(open) => !open && setToggleTarget(null)}>
+      <AlertDialog
+        open={!!toggleTarget}
+        onOpenChange={(open) => {
+          if (!open) setToggleTarget(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              Confirmar alteração de status
-            </AlertDialogTitle>
+            <AlertDialogTitle>Confirmar alteração de status</AlertDialogTitle>
             <AlertDialogDescription>
               {toggleTarget
-                ? `Deseja marcar a transação "${toggleTarget.description}" como ${toggleTarget.nextStatus ? 'paga' : 'pendente'}?`
+                ? `Deseja marcar "${toggleTarget.transaction.description}" como ${toggleTarget.nextStatus ? 'paga' : 'pendente'}?`
                 : ''}
             </AlertDialogDescription>
+            {toggleTarget && isSeriesType(toggleTarget.transaction.series_type) && toggleTarget.transaction.series_id && (
+              <p className="text-sm text-muted-foreground">
+                Parte da série {formatSeriesLabel(toggleTarget.transaction)}.
+              </p>
+            )}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={updateMutation.isPending}>
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleConfirmToggle}
+              onClick={() => handleConfirmToggle('single')}
               disabled={updateMutation.isPending}
             >
-              Confirmar
+              Somente esta
             </AlertDialogAction>
+            {toggleTarget && isSeriesType(toggleTarget.transaction.series_type) && toggleTarget.transaction.series_id && (
+              <AlertDialogAction
+                onClick={() => handleConfirmToggle('series_from_here')}
+                disabled={updateMutation.isPending}
+              >
+                Esta e próximas
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir esta transação? Esta ação não pode
-              ser desfeita.
+              {deleteTarget
+                ? `Tem certeza que deseja excluir "${deleteTarget.description}"? Esta ação não pode ser desfeita.`
+                : ''}
             </AlertDialogDescription>
+            {deleteTarget && isSeriesType(deleteTarget.series_type) && deleteTarget.series_id && (
+              <p className="text-sm text-muted-foreground">
+                Parte da série {formatSeriesLabel(deleteTarget)}.
+              </p>
+            )}
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>
-              Excluir
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => handleDelete('single')}
+              disabled={deleteMutation.isPending}
+            >
+              Somente esta
             </AlertDialogAction>
+            {deleteTarget && isSeriesType(deleteTarget.series_type) && deleteTarget.series_id && (
+              <AlertDialogAction
+                onClick={() => handleDelete('series_from_here')}
+                disabled={deleteMutation.isPending}
+              >
+                Esta e próximas
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

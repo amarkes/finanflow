@@ -5,7 +5,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Layout } from '@/components/Layout';
 import { useCategories } from '@/hooks/useCategories';
-import { useCreateTransaction, useUpdateTransaction, useTransactions } from '@/hooks/useTransactions';
+import {
+  useCreateTransaction,
+  useUpdateTransaction,
+  useTransactions,
+  type CreateTransactionInput,
+  type TransactionUpdateInput,
+} from '@/hooks/useTransactions';
 import { useAccounts } from '@/hooks/useAccounts';
 import { parseBRLToCents, formatCentsToBRL } from '@/lib/currency';
 import { Button } from '@/components/ui/button';
@@ -28,6 +34,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
 import {
   Popover,
@@ -39,9 +47,18 @@ import { ptBR } from 'date-fns/locale';
 import { CalendarIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import { PaymentMethodChips, PAYMENT_METHOD_OPTIONS, PAYMENT_METHOD_ACCOUNT_TYPES } from '@/components/payment/PaymentMethodChips';
 import { toast } from 'sonner';
 import { getAccountTypeLabel } from '@/lib/account';
+import {
+  calculateInstallments,
+  generateMonthlyDates,
+  MONTHLY_OCCURRENCES,
+  RecurrenceType,
+  isSeriesType,
+  formatSeriesLabel,
+} from '@/lib/transactions';
 
 const transactionSchema = z.object({
   type: z.enum(['income', 'expense'], {
@@ -56,6 +73,14 @@ const transactionSchema = z.object({
   payment_method: z.string().optional(),
   account_id: z.string().optional(),
   notes: z.string().optional(),
+  recurrence_type: z.enum(['single', 'installment', 'monthly']).default('single'),
+  installments_count: z
+    .number()
+    .int()
+    .min(2, 'Quantidade mínima de parcelas é 2')
+    .max(24, 'Quantidade máxima de parcelas é 24')
+    .optional(),
+  apply_mode: z.enum(['single', 'series_from_here']).optional(),
   is_paid: z.boolean().default(false),
 }).superRefine((data, ctx) => {
   if (data.payment_method?.toLowerCase() === 'cartão de crédito') {
@@ -67,9 +92,29 @@ const transactionSchema = z.object({
       });
     }
   }
+
+  if (data.recurrence_type === 'installment') {
+    if (data.installments_count == null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Informe a quantidade de parcelas',
+        path: ['installments_count'],
+      });
+    }
+  }
 });
 
 type TransactionFormData = z.infer<typeof transactionSchema>;
+
+const RECURRENCE_OPTIONS: Array<{
+  value: RecurrenceType;
+  label: string;
+  helper: string;
+}> = [
+  { value: 'single', label: 'Única', helper: 'Cria apenas este lançamento.' },
+  { value: 'installment', label: 'Parcelada', helper: 'Divide o valor total em parcelas iguais.' },
+  { value: 'monthly', label: 'Mensal', helper: 'Repete o valor pelos próximos 12 meses.' },
+];
 
 export default function TransactionForm() {
   const navigate = useNavigate();
@@ -81,6 +126,10 @@ export default function TransactionForm() {
   const { data: transactions } = useTransactions();
   const createMutation = useCreateTransaction();
   const updateMutation = useUpdateTransaction();
+  const currentTransaction = useMemo(
+    () => (transactions ? transactions.find((t) => t.id === id) : undefined),
+    [transactions, id]
+  );
 
   const form = useForm<TransactionFormData>({
     resolver: zodResolver(transactionSchema),
@@ -93,6 +142,9 @@ export default function TransactionForm() {
       payment_method: '',
       account_id: 'none',
       notes: '',
+      recurrence_type: 'single',
+      installments_count: 2,
+      apply_mode: 'single',
       is_paid: false,
     },
   });
@@ -101,25 +153,39 @@ export default function TransactionForm() {
   const currentCategoryId = form.watch('category_id');
   const paymentMethod = form.watch('payment_method');
   const currentAccountId = form.watch('account_id');
+  const recurrenceType = form.watch('recurrence_type');
+  const installmentsCount = form.watch('installments_count');
+  const transactionDateValue = form.watch('date');
+  const amountValue = form.watch('amount');
+  const isSeriesTransaction = currentTransaction ? isSeriesType(currentTransaction.series_type) : false;
+  const seriesLabel = useMemo(
+    () => (currentTransaction ? formatSeriesLabel(currentTransaction) : null),
+    [currentTransaction]
+  );
 
   useEffect(() => {
-    if (isEditing && transactions) {
-      const transaction = transactions.find((t) => t.id === id);
-      if (transaction) {
-        form.reset({
-          type: transaction.type,
-          amount: (transaction.amount_cents / 100).toFixed(2).replace('.', ','),
-          date: new Date(transaction.date),
-          description: transaction.description,
-          category_id: transaction.category_id || 'none',
-          payment_method: transaction.payment_method || '',
-          account_id: transaction.account_id || 'none',
-          notes: transaction.notes || '',
-          is_paid: transaction.is_paid,
-        });
-      }
-    }
-  }, [isEditing, id, transactions, form]);
+    if (!isEditing || !currentTransaction) return;
+
+    form.reset({
+      type: currentTransaction.type,
+      amount: (currentTransaction.amount_cents / 100).toFixed(2).replace('.', ','),
+      date: new Date(currentTransaction.date),
+      description: currentTransaction.description,
+      category_id: currentTransaction.category_id || 'none',
+      payment_method: currentTransaction.payment_method || '',
+      account_id: currentTransaction.account_id || 'none',
+      notes: currentTransaction.notes || '',
+      recurrence_type: currentTransaction.series_type,
+      installments_count:
+        currentTransaction.series_type === 'installment'
+          ? currentTransaction.series_total ?? 2
+          : currentTransaction.series_type === 'single'
+            ? 2
+            : undefined,
+      apply_mode: 'single',
+      is_paid: currentTransaction.is_paid,
+    });
+  }, [isEditing, currentTransaction, form]);
 
   const filteredCategories = categories?.filter(
     (cat) => cat.type === selectedType
@@ -212,6 +278,56 @@ export default function TransactionForm() {
     return 'Saldo não informado';
   }, [selectedAccount, availableLimit]);
 
+  const installmentsSummary = useMemo(() => {
+    if (recurrenceType !== 'installment') return null;
+    if (!amountValue) return null;
+    if (!installmentsCount || installmentsCount < 2) return null;
+
+    const totalCents = parseBRLToCents(amountValue);
+    if (!Number.isFinite(totalCents) || Number.isNaN(totalCents) || totalCents <= 0) {
+      return null;
+    }
+
+    try {
+      const values = calculateInstallments(totalCents, installmentsCount);
+      const breakdownMap = values.reduce<Map<number, number>>((acc, value) => {
+        acc.set(value, (acc.get(value) ?? 0) + 1);
+        return acc;
+      }, new Map());
+
+      const breakdown = Array.from(breakdownMap.entries())
+        .map(([value, count]) => `${count}x de ${formatCentsToBRL(value)}`)
+        .join(' + ');
+
+      return {
+        total: formatCentsToBRL(totalCents),
+        breakdown,
+      };
+    } catch {
+      return null;
+    }
+  }, [amountValue, installmentsCount, recurrenceType]);
+
+  const monthlySummary = useMemo(() => {
+    if (recurrenceType !== 'monthly') return null;
+    if (!amountValue || !transactionDateValue) return null;
+
+    const totalCents = parseBRLToCents(amountValue);
+    if (Number.isNaN(totalCents) || totalCents <= 0) {
+      return null;
+    }
+
+    const monthlyDates = generateMonthlyDates(transactionDateValue, MONTHLY_OCCURRENCES);
+    const firstDate = monthlyDates[0];
+    const lastDate = monthlyDates[monthlyDates.length - 1];
+
+    return {
+      amount: formatCentsToBRL(totalCents),
+      start: format(firstDate, 'dd/MM/yyyy'),
+      end: format(lastDate, 'dd/MM/yyyy'),
+    };
+  }, [amountValue, recurrenceType, transactionDateValue]);
+
   async function onSubmit(data: TransactionFormData) {
     const sanitizedMethod = data.payment_method?.trim() ?? '';
     const selectedAccountId = data.account_id && data.account_id !== 'none' ? data.account_id : null;
@@ -234,9 +350,15 @@ export default function TransactionForm() {
       }
     }
 
-    const transactionData = {
+    const amountInCents = parseBRLToCents(data.amount);
+    if (!Number.isFinite(amountInCents) || Number.isNaN(amountInCents) || amountInCents <= 0) {
+      toast.error('Informe um valor válido.');
+      return;
+    }
+
+    const basePayload = {
       type: data.type,
-      amount_cents: parseBRLToCents(data.amount),
+      amount_cents: amountInCents,
       date: format(data.date, 'yyyy-MM-dd'),
       description: data.description,
       category_id: data.category_id === 'none' ? null : data.category_id,
@@ -246,10 +368,39 @@ export default function TransactionForm() {
       is_paid: data.is_paid ?? false,
     };
 
+    const recurrenceType = data.recurrence_type;
+    const installmentsCount =
+      recurrenceType === 'installment' ? data.installments_count ?? 2 : undefined;
+
     if (isEditing) {
-      await updateMutation.mutateAsync({ id: id!, ...transactionData });
+      const applyMode = data.apply_mode ?? 'single';
+      const updatePayload: TransactionUpdateInput = {
+        id: id!,
+        ...basePayload,
+        applyMode,
+      };
+
+      if (applyMode === 'series_from_here' && currentTransaction?.series_id) {
+        updatePayload.seriesMeta = {
+          series_id: currentTransaction.series_id,
+          series_sequence: currentTransaction.series_sequence ?? 1,
+        };
+
+        if (currentTransaction.series_type === 'monthly') {
+          const totalOccurrences = currentTransaction.series_total ?? MONTHLY_OCCURRENCES;
+          updatePayload.series_amount_total_cents = amountInCents * totalOccurrences;
+        }
+      }
+
+      await updateMutation.mutateAsync(updatePayload);
     } else {
-      await createMutation.mutateAsync(transactionData);
+      const createPayload: CreateTransactionInput = {
+        ...basePayload,
+        recurrence_type: recurrenceType,
+        installments_count: installmentsCount,
+      };
+
+      await createMutation.mutateAsync(createPayload);
     }
 
     navigate('/transacoes');
@@ -272,10 +423,26 @@ export default function TransactionForm() {
         <Card>
           <CardHeader>
             <CardTitle>Dados da Transação</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      </CardHeader>
+      <CardContent>
+        {isEditing && currentTransaction && (
+          <div className="mb-6 rounded-md border border-dashed p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              {seriesLabel && (
+                <Badge variant="secondary" className="uppercase tracking-wide">
+                  {seriesLabel}
+                </Badge>
+              )}
+              <span className="text-sm text-muted-foreground">
+                {isSeriesTransaction
+                  ? 'Este lançamento pertence a uma série. Use as opções de aplicação abaixo para gerenciar o restante da série.'
+                  : 'Este lançamento é único.'}
+              </span>
+            </div>
+          </div>
+        )}
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                 <FormField
                   control={form.control}
                   name="type"
@@ -382,6 +549,90 @@ export default function TransactionForm() {
                     </FormItem>
                   )}
                 />
+
+                <FormField
+                  control={form.control}
+                  name="recurrence_type"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tipo de lançamento</FormLabel>
+                      <FormControl>
+                        <RadioGroup
+                          onValueChange={(value) => field.onChange(value as RecurrenceType)}
+                          value={field.value}
+                          className="grid gap-2 md:grid-cols-3"
+                        >
+                          {RECURRENCE_OPTIONS.map((option) => {
+                            const optionId = `recurrence-${option.value}`;
+                            return (
+                              <div
+                                key={option.value}
+                                className={cn(
+                                  'flex items-start gap-3 rounded-md border p-3',
+                                  field.value === option.value && 'border-primary bg-primary/5'
+                                )}
+                              >
+                                <RadioGroupItem
+                                  value={option.value}
+                                  id={optionId}
+                                  disabled={isEditing}
+                                  className="mt-1"
+                                />
+                                <div className="space-y-1">
+                                  <Label htmlFor={optionId} className="cursor-pointer font-medium">
+                                    {option.label}
+                                  </Label>
+                                  <p className="text-sm text-muted-foreground">{option.helper}</p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </RadioGroup>
+                      </FormControl>
+                      <FormDescription>
+                        {isEditing
+                          ? 'A recorrência é definida na criação. Para alterar, crie uma nova transação.'
+                          : 'Defina se devemos criar parcelas automáticas ou lançamentos mensais.'}
+                      </FormDescription>
+                      {recurrenceType === 'monthly' && monthlySummary && (
+                        <FormDescription className="text-sm text-primary">
+                          {`Serão criados ${MONTHLY_OCCURRENCES} lançamentos de ${monthlySummary.amount} entre ${monthlySummary.start} e ${monthlySummary.end}.`}
+                        </FormDescription>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {recurrenceType === 'installment' && (
+                  <FormField
+                    control={form.control}
+                    name="installments_count"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Quantidade de parcelas</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={2}
+                            max={24}
+                            value={field.value ?? ''}
+                            onChange={(event) => {
+                              const raw = event.target.value;
+                              field.onChange(raw === '' ? undefined : Number(raw));
+                            }}
+                          />
+                        </FormControl>
+                        {installmentsSummary && (
+                          <FormDescription className="text-sm text-primary">
+                            {`${installmentsSummary.breakdown} (Total: ${installmentsSummary.total})`}
+                          </FormDescription>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
                 <FormField
                   control={form.control}
@@ -515,6 +766,36 @@ export default function TransactionForm() {
                     </FormItem>
                   )}
                 />
+
+                {isEditing && isSeriesTransaction && (
+                  <FormField
+                    control={form.control}
+                    name="apply_mode"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Aplicar alterações</FormLabel>
+                        <Select
+                          value={field.value ?? 'single'}
+                          onValueChange={(value) => field.onChange(value as 'single' | 'series_from_here')}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Escolha como aplicar" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="single">Somente esta transação</SelectItem>
+                            <SelectItem value="series_from_here">Esta e próximas da série</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          Use esta opção para propagar alterações para os lançamentos futuros da série.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
                 <div className="flex gap-4">
                   <Button
