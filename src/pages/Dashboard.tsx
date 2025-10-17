@@ -465,7 +465,12 @@ export default function Dashboard() {
             )}
           </CardContent>
         </Card>
-        <AccountsCard accounts={accounts} transactions={transactions} />
+        <AccountsCard
+          accounts={accounts}
+          transactions={transactions}
+          periodStart={startDate}
+          periodEnd={endDate}
+        />
       </div>
     </Layout>
   );
