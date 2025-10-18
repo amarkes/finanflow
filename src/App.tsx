@@ -14,6 +14,7 @@ import TransactionForm from "./pages/TransactionForm";
 import Categories from "./pages/Categories";
 import Accounts from "./pages/Accounts";
 import NotFound from "./pages/NotFound";
+import Community from "./pages/Community";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +35,7 @@ const App = () => (
             <Route path="/transacoes/:id/editar" element={<ProtectedRoute><TransactionForm /></ProtectedRoute>} />
             <Route path="/categorias" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
             <Route path="/contas" element={<ProtectedRoute><Accounts /></ProtectedRoute>} />
+            <Route path="/comunidade" element={<ProtectedRoute><Community /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
