@@ -59,6 +59,7 @@ import {
   isSeriesType,
   formatSeriesLabel,
 } from '@/lib/transactions';
+import { LogPanel } from '@/components/audit/LogPanel';
 
 const transactionSchema = z.object({
   type: z.enum(['income', 'expense'], {
@@ -824,6 +825,16 @@ export default function TransactionForm() {
             </Form>
           </CardContent>
         </Card>
+
+        {isEditing && currentTransaction && (
+          <LogPanel
+            entityType="transaction"
+            entityId={currentTransaction.id}
+            className="max-w-2xl mx-auto"
+            description="Alterações registradas automaticamente para esta transação."
+            emptyMessage="Esta transação ainda não possui histórico de alterações."
+          />
+        )}
       </div>
     </Layout>
   );

@@ -72,11 +72,12 @@ export default function Dashboard() {
         start = startOfMonth(now);
         end = endOfMonth(now);
         break;
-      case "last":
+      case "last": {
         const lastMonth = subMonths(now, 1);
         start = startOfMonth(lastMonth);
         end = endOfMonth(lastMonth);
         break;
+      }
       case "custom":
         if (appliedRange?.from && appliedRange?.to) {
           start = startOfDay(appliedRange.from);

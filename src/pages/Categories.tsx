@@ -33,6 +33,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { Category } from '@/hooks/useCategories';
+import { LogPanel } from '@/components/audit/LogPanel';
 
 const PRESET_COLORS = [
   '#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', 
@@ -113,7 +114,7 @@ export default function Categories() {
                 Nova Categoria
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="space-y-6 max-h-[80vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>
                   {editingCategory ? 'Editar Categoria' : 'Nova Categoria'}
@@ -193,6 +194,15 @@ export default function Categories() {
                     : 'Criar'}
                 </Button>
               </DialogFooter>
+              {editingCategory && (
+                <LogPanel
+                  entityType="category"
+                  entityId={editingCategory.id}
+                  className="border-dashed"
+                  description="Registro de alterações realizadas nesta categoria."
+                  emptyMessage="Nenhuma alteração registrada para esta categoria."
+                />
+              )}
             </DialogContent>
           </Dialog>
         </div>

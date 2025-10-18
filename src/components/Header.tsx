@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Wallet, LogOut, Settings, Menu } from 'lucide-react';
+import { Wallet, LogOut, Settings, Menu, HelpingHand, FileText } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
@@ -105,6 +105,16 @@ export function Header() {
               <SheetClose asChild>
                 <Button
                   variant="ghost"
+                  className="justify-start gap-2"
+                  onClick={() => navigate('/logs')}
+                >
+                  <FileText className="h-4 w-4" />
+                  Logs de Auditoria
+                </Button>
+              </SheetClose>
+              <SheetClose asChild>
+                <Button
+                  variant="ghost"
                   className="justify-start gap-2 text-destructive"
                   onClick={handleLogout}
                 >
@@ -136,9 +146,25 @@ export function Header() {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link to="/comunidade" className="flex items-center gap-2">
+                <HelpingHand className="h-4 w-4" />
+                <span>Comunidade</span>
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/logs" className="flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                <span>Logs de Auditoria</span>
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => navigate('/configuracoes')}>
               <Settings className="mr-2 h-4 w-4" />
               <span>Configurações</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => navigate('/comunidade')}>
+              <HelpingHand className="mr-2 h-4 w-4" />
+              <span>Ajuda</span>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleLogout}>
               <LogOut className="mr-2 h-4 w-4" />
