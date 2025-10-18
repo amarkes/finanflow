@@ -61,6 +61,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { LogPanel } from '@/components/audit/LogPanel';
 
 const accountSchema = z.object({
   name: z.string().min(3, 'Nome deve ter no mínimo 3 caracteres'),
@@ -214,7 +215,7 @@ export default function Accounts() {
                 Nova Conta
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="space-y-6">
               <DialogHeader>
                 <DialogTitle>
                   {editingAccount ? 'Editar Conta' : 'Nova Conta'}
@@ -361,6 +362,15 @@ export default function Accounts() {
                   </DialogFooter>
                 </form>
               </Form>
+              {editingAccount && (
+                <LogPanel
+                  entityType="account"
+                  entityId={editingAccount.id}
+                  className="border-dashed"
+                  description="Histórico completo de alterações para esta conta."
+                  emptyMessage="Esta conta ainda não possui registros de auditoria."
+                />
+              )}
             </DialogContent>
           </Dialog>
         </div>

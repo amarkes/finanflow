@@ -15,6 +15,7 @@ import Categories from "./pages/Categories";
 import Accounts from "./pages/Accounts";
 import NotFound from "./pages/NotFound";
 import Community from "./pages/Community";
+import AuditLogsPage from "./pages/logs";
 
 const queryClient = new QueryClient();
 
@@ -36,6 +37,7 @@ const App = () => (
             <Route path="/categorias" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
             <Route path="/contas" element={<ProtectedRoute><Accounts /></ProtectedRoute>} />
             <Route path="/comunidade" element={<ProtectedRoute><Community /></ProtectedRoute>} />
+            <Route path="/logs" element={<ProtectedRoute><AuditLogsPage /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

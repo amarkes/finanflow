@@ -100,4 +100,3 @@ CREATE POLICY "Staff update feedback"
         AND p.is_staff = true
     )
   );
-
