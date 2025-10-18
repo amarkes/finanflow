@@ -15,7 +15,7 @@ import Categories from "./pages/Categories";
 import Accounts from "./pages/Accounts";
 import NotFound from "./pages/NotFound";
 import Community from "./pages/Community";
-import AuditLogsPage from "./pages/logs";
+import AuditLogsPage from "./pages/Logs";
 
 const queryClient = new QueryClient();
 
