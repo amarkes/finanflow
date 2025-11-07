@@ -23,6 +23,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import {
   Table,
   TableBody,
@@ -41,8 +43,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Search, Pencil, Trash2, CheckCircle2, Clock, Copy } from 'lucide-react';
+import {
+  Plus,
+  Search,
+  Pencil,
+  Trash2,
+  CheckCircle2,
+  Clock,
+  Copy,
+  Calendar as CalendarIcon,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import type { DateRange } from 'react-day-picker';
 
 export default function Transactions() {
   const navigate = useNavigate();
@@ -72,9 +86,14 @@ export default function Transactions() {
   const [cloneTarget, setCloneTarget] = useState<Transaction | null>(null);
   const [cloneDate, setCloneDate] = useState('');
   const [cloneIsPaid, setCloneIsPaid] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [tempDateRange, setTempDateRange] = useState<DateRange | undefined>();
+  const [isDateFilterOpen, setIsDateFilterOpen] = useState(false);
 
   const { data: categories } = useCategories();
   const { data: accounts } = useAccounts({ isActive: true });
+  const startDateFilter = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : undefined;
+  const endDateFilter = dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : undefined;
   const { data: transactions, isLoading } = useTransactions({
     search,
     type: typeFilter !== 'all' ? typeFilter : undefined,
@@ -82,6 +101,8 @@ export default function Transactions() {
     status: statusFilter !== 'all' ? statusFilter : undefined,
     seriesType: seriesFilter !== 'all' ? seriesFilter : undefined,
     accountId: accountFilter !== 'all' ? accountFilter : undefined,
+    startDate: startDateFilter,
+    endDate: endDateFilter,
   });
   const deleteMutation = useDeleteTransaction();
   const updateMutation = useUpdateTransaction();
@@ -206,6 +227,33 @@ export default function Transactions() {
     );
   };
 
+  const handleDateFilterOpenChange = (open: boolean) => {
+    setIsDateFilterOpen(open);
+    if (open) {
+      setTempDateRange(dateRange);
+    } else {
+      setTempDateRange(undefined);
+    }
+  };
+
+  const handleApplyDateRange = () => {
+    if (tempDateRange?.from && tempDateRange?.to) {
+      setDateRange(tempDateRange);
+      setIsDateFilterOpen(false);
+    }
+  };
+
+  const handleClearDateRange = () => {
+    setDateRange(undefined);
+    setTempDateRange(undefined);
+    setIsDateFilterOpen(false);
+  };
+
+  const dateRangeLabel =
+    dateRange?.from && dateRange?.to
+      ? `${format(dateRange.from, 'dd/MM/yyyy')} - ${format(dateRange.to, 'dd/MM/yyyy')}`
+      : 'Selecionar intervalo';
+
   const isRowUpdating = (transactionId: string) =>
     updateMutation.isPending && updateMutation.variables?.id === transactionId;
 
@@ -250,7 +298,7 @@ export default function Transactions() {
           </Button>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-6">
+        <div className="grid gap-4 md:grid-cols-7">
           <div className="flex flex-col gap-2">
             <label htmlFor="transactions-search" className="text-sm font-medium text-muted-foreground">
               Buscar
@@ -370,6 +418,55 @@ export default function Transactions() {
                 <SelectItem value="monthly">Mensais</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium text-muted-foreground">
+              Período
+            </label>
+            <Popover open={isDateFilterOpen} onOpenChange={handleDateFilterOpenChange}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={`w-full justify-start text-left font-normal ${
+                    dateRange?.from ? '' : 'text-muted-foreground'
+                  }`}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  <span className="truncate">{dateRangeLabel}</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-4" align="start">
+                <Calendar
+                  mode="range"
+                  selected={tempDateRange}
+                  onSelect={setTempDateRange}
+                  numberOfMonths={1}
+                  locale={ptBR}
+                  initialFocus
+                />
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-4">
+                  <Button
+                    variant="ghost"
+                    onClick={handleClearDateRange}
+                    disabled={!dateRange?.from || !dateRange?.to}
+                  >
+                    Limpar
+                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => handleDateFilterOpenChange(false)}>
+                      Cancelar
+                    </Button>
+                    <Button
+                      onClick={handleApplyDateRange}
+                      disabled={!tempDateRange?.from || !tempDateRange?.to}
+                    >
+                      Aplicar
+                    </Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
 
