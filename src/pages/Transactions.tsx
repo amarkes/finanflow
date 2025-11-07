@@ -5,6 +5,7 @@ import {
   useTransactions,
   useDeleteTransaction,
   useUpdateTransaction,
+  useCloneTransaction,
   type Transaction,
 } from '@/hooks/useTransactions';
 import { useCategories } from '@/hooks/useCategories';
@@ -39,7 +40,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Search, Pencil, Trash2, CheckCircle2, Clock } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, CheckCircle2, Clock, Copy } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 export default function Transactions() {
@@ -67,6 +68,8 @@ export default function Transactions() {
     transaction: Transaction;
     nextStatus: boolean;
   } | null>(null);
+  const [cloneTarget, setCloneTarget] = useState<Transaction | null>(null);
+  const [cloneDate, setCloneDate] = useState('');
 
   const { data: categories } = useCategories();
   const { data: accounts } = useAccounts({ isActive: true });
@@ -80,6 +83,7 @@ export default function Transactions() {
   });
   const deleteMutation = useDeleteTransaction();
   const updateMutation = useUpdateTransaction();
+  const cloneMutation = useCloneTransaction();
 
   useEffect(() => {
     const statusParam = searchParams.get('status');
@@ -165,8 +169,43 @@ export default function Transactions() {
     });
   };
 
+  const normalizeTransactionDate = (date: string) => {
+    if (!date) return '';
+    const [onlyDate] = date.split('T');
+    return onlyDate ?? date;
+  };
+
+  const handleRequestClone = (transaction: Transaction) => {
+    setCloneTarget(transaction);
+    setCloneDate(normalizeTransactionDate(transaction.date));
+  };
+
+  const resetCloneState = () => {
+    setCloneTarget(null);
+    setCloneDate('');
+  };
+
+  const handleConfirmClone = () => {
+    if (!cloneTarget || !cloneDate) return;
+
+    cloneMutation.mutate(
+      {
+        sourceId: cloneTarget.id,
+        date: cloneDate,
+      },
+      {
+        onSuccess: () => {
+          resetCloneState();
+        },
+      }
+    );
+  };
+
   const isRowUpdating = (transactionId: string) =>
     updateMutation.isPending && updateMutation.variables?.id === transactionId;
+
+  const isCloningTransaction = (transactionId: string) =>
+    cloneMutation.isPending && cloneMutation.variables?.sourceId === transactionId;
 
   const handleConfirmToggle = (mode: 'single' | 'series_from_here') => {
     if (!toggleTarget) return;
@@ -450,6 +489,16 @@ export default function Transactions() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          onClick={() => handleRequestClone(transaction)}
+                          disabled={isCloningTransaction(transaction.id)}
+                          aria-label="Clonar transação"
+                          title="Clonar transação"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={() =>
                             navigate(`/transacoes/${transaction.id}/editar`)
                           }
@@ -523,6 +572,50 @@ export default function Transactions() {
                 Esta e próximas
               </AlertDialogAction>
             )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!cloneTarget}
+        onOpenChange={(open) => {
+          if (!open) resetCloneState();
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clonar transação</AlertDialogTitle>
+            <AlertDialogDescription>
+              {cloneTarget
+                ? `Informe a nova data para "${cloneTarget.description}".`
+                : ''}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2">
+            <label
+              htmlFor="clone-date"
+              className="text-sm font-medium text-muted-foreground"
+            >
+              Data
+            </label>
+            <Input
+              id="clone-date"
+              type="date"
+              value={cloneDate}
+              onChange={(e) => setCloneDate(e.target.value)}
+              disabled={cloneMutation.isPending}
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cloneMutation.isPending}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmClone}
+              disabled={cloneMutation.isPending || !cloneDate}
+            >
+              Clonar
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

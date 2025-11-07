@@ -97,6 +97,11 @@ export interface DeleteTransactionInput {
   };
 }
 
+export interface CloneTransactionInput {
+  sourceId: string;
+  date: string;
+}
+
 export function useTransactions(filters?: TransactionFilters) {
   return useQuery({
     queryKey: ['transactions', filters],
@@ -355,6 +360,72 @@ export function useDeleteTransaction() {
     },
     onError: (error: unknown) => {
       const message = error instanceof Error && error.message ? error.message : 'Erro ao excluir transação';
+      toast.error(message);
+    },
+  });
+}
+
+export function useCloneTransaction() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: async ({ sourceId, date }: CloneTransactionInput) => {
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      if (!date) {
+        throw new Error('Informe uma data válida para clonar a transação.');
+      }
+
+      const { data: transaction, error } = await supabase
+        .from('transactions')
+        .select(
+          'id, type, amount_cents, description, account_id, category_id, payment_method, notes, is_paid'
+        )
+        .eq('id', sourceId)
+        .eq('user_id', user.id)
+        .single();
+
+      if (error) throw error;
+      if (!transaction) {
+        throw new Error('Transação não encontrada.');
+      }
+
+      const { error: insertError } = await supabase
+        .from('transactions')
+        .insert({
+          type: transaction.type,
+          amount_cents: transaction.amount_cents,
+          date,
+          description: transaction.description,
+          account_id: transaction.account_id,
+          category_id: transaction.category_id,
+          payment_method: transaction.payment_method,
+          notes: transaction.notes,
+          is_paid: transaction.is_paid,
+          user_id: user.id,
+          series_type: 'single',
+          series_id: null,
+          series_sequence: 1,
+          series_total: 1,
+          series_amount_total_cents: transaction.amount_cents,
+        })
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      toast.success('Transação clonada com sucesso!');
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Erro ao clonar transação';
       toast.error(message);
     },
   });
