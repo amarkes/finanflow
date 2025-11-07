@@ -15,6 +15,7 @@ import { getAccountTypeLabel } from '@/lib/account';
 import { formatSeriesLabel, isSeriesType, type RecurrenceType } from '@/lib/transactions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -70,6 +71,7 @@ export default function Transactions() {
   } | null>(null);
   const [cloneTarget, setCloneTarget] = useState<Transaction | null>(null);
   const [cloneDate, setCloneDate] = useState('');
+  const [cloneIsPaid, setCloneIsPaid] = useState(false);
 
   const { data: categories } = useCategories();
   const { data: accounts } = useAccounts({ isActive: true });
@@ -178,11 +180,13 @@ export default function Transactions() {
   const handleRequestClone = (transaction: Transaction) => {
     setCloneTarget(transaction);
     setCloneDate(normalizeTransactionDate(transaction.date));
+    setCloneIsPaid(false);
   };
 
   const resetCloneState = () => {
     setCloneTarget(null);
     setCloneDate('');
+    setCloneIsPaid(false);
   };
 
   const handleConfirmClone = () => {
@@ -192,6 +196,7 @@ export default function Transactions() {
       {
         sourceId: cloneTarget.id,
         date: cloneDate,
+        isPaid: cloneIsPaid,
       },
       {
         onSuccess: () => {
@@ -603,6 +608,20 @@ export default function Transactions() {
               type="date"
               value={cloneDate}
               onChange={(e) => setCloneDate(e.target.value)}
+              disabled={cloneMutation.isPending}
+            />
+          </div>
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Marcar como paga</p>
+              <p className="text-xs text-muted-foreground">
+                Defina o status da transação clonada. Padrão: Pendente.
+              </p>
+            </div>
+            <Switch
+              id="clone-is-paid"
+              checked={cloneIsPaid}
+              onCheckedChange={(checked) => setCloneIsPaid(checked)}
               disabled={cloneMutation.isPending}
             />
           </div>

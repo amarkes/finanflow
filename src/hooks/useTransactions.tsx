@@ -100,6 +100,7 @@ export interface DeleteTransactionInput {
 export interface CloneTransactionInput {
   sourceId: string;
   date: string;
+  isPaid: boolean;
 }
 
 export function useTransactions(filters?: TransactionFilters) {
@@ -370,7 +371,7 @@ export function useCloneTransaction() {
   const { user } = useAuth();
 
   return useMutation({
-    mutationFn: async ({ sourceId, date }: CloneTransactionInput) => {
+    mutationFn: async ({ sourceId, date, isPaid }: CloneTransactionInput) => {
       if (!user) {
         throw new Error('Usuário não autenticado');
       }
@@ -404,7 +405,7 @@ export function useCloneTransaction() {
           category_id: transaction.category_id,
           payment_method: transaction.payment_method,
           notes: transaction.notes,
-          is_paid: transaction.is_paid,
+          is_paid: isPaid,
           user_id: user.id,
           series_type: 'single',
           series_id: null,
